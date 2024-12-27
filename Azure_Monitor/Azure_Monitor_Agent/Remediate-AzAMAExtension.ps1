@@ -5,18 +5,17 @@
 
     .DESCRIPTION
     This script attempts to install Microsoft's Azure Monitor Agent ("AMA") on servers.
+
     If the agent is missing or unhealthy, it's added to a server.
     The script works at resource group and resource scopes across the three different resource types currently supported by the AMA,
     which are Virtual Machines, Virtual Machine Scale Sets, or Arc-enabled Servers.
 
     It has "WhatIf" support, and can report on its findings before attempting any changes.
 
+    This script works at the Azure management plane. It does not directly interact with an Operating System.
+
     This script is provided AS-IS with no warranties or claims it'll work as described. Please review the code and test in a safe environment.
     Executing this script is done at your own risk ;) .
-
-    This script remediates missing Azure Monitor agent extensions from Azure VMs, VM Scale Sets, and Arc-enabled Servers.
-    It can report on the state of the extension or add, add/remove in the event of a failed installation, or remove the extension.
-    This script works at the Azure management plane. It does not directly interact with an Operating System.
 
     .NOTES
     ===========================================================================
