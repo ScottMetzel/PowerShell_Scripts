@@ -301,6 +301,7 @@ if ($PSBoundParameters.ContainsKey('ResourceGroupName')) {
             [System.Collections.ArrayList]$AzConnectedMachinesNoAMAArray = @()
             [System.Collections.ArrayList]$AzConnectedMachinesAMAHealthyArray = @()
             [System.Collections.ArrayList]$AzConnectedMachinesAMAUnhealthyArray = @()
+            [System.Collections.ArrayList]$AzConnectedMachinesNotConnectedArray = @()
 
             Write-Information -MessageData "Found: '$AzConnectedMachinesArrayCount' Azure Arc-enabled Servers in resource group: '$ResourceGroupName'."
             Write-Information -MessageData 'Enumerating Arc-enabled Servers array to find AMA extension.'
@@ -316,22 +317,30 @@ if ($PSBoundParameters.ContainsKey('ResourceGroupName')) {
                 ($_.Name -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')) -and ($_.Publisher -eq 'Microsoft.Azure.Monitor')
                 }
 
-                if ($GetAMAExtension) {
-                    Write-Information -MessageData 'Found AMA extension on Arc-enabled Server.'
+                if ('Connected' -eq $ConnectedMachine.Status) {
+                    Write-Information -MessageData 'Arc-enabled Server is connected.'
 
-                    [System.String]$AMAExtensionProvisioningState = $GetAMAExtension.ProvisioningState
-                    if ($AMAExtensionProvisioningState -eq 'Succeeded') {
-                        Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
-                        $AzConnectedMachinesAMAHealthyArray.Add($ConnectedMachine) | Out-Null
+                    if ($GetAMAExtension) {
+                        Write-Information -MessageData 'Found AMA extension on Arc-enabled Server.'
+
+                        [System.String]$AMAExtensionProvisioningState = $GetAMAExtension.ProvisioningState
+                        if ($AMAExtensionProvisioningState -eq 'Succeeded') {
+                            Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
+                            $AzConnectedMachinesAMAHealthyArray.Add($ConnectedMachine) | Out-Null
+                        }
+                        else {
+                            Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
+                            $AzConnectedMachinesAMAUnhealthyArray.Add($ConnectedMachine) | Out-Null
+                        }
                     }
                     else {
-                        Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
-                        $AzConnectedMachinesAMAUnhealthyArray.Add($ConnectedMachine) | Out-Null
+                        Write-Information -MessageData 'Did not find AMA extension on Arc-enabled Server.'
+                        $AzConnectedMachinesNoAMAArray.Add($ConnectedMachine) | Out-Null
                     }
                 }
                 else {
-                    Write-Information -MessageData 'Did not find AMA extension on Arc-enabled Server.'
-                    $AzConnectedMachinesNoAMAArray.Add($ConnectedMachine) | Out-Null
+                    Write-Warning -Message "Arc-enabled Server: '$ConnectedMachineName' is not connected."
+                    $AzConnectedMachinesNotConnectedArray.Add($ConnectedMachine) | Out-Null
                 }
 
                 $i++
@@ -454,6 +463,8 @@ if ($PSBoundParameters.ContainsKey('ResourceGroupName')) {
             [System.String]$AzConnectedMachinesAMAHealthyReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachinesAMAHealthyReportFileName)
             [System.String]$AzConnectedMachinesAMAUnhealthyReportFileName = [System.String]::Concat($ScriptNameNoExt, '_', 'Arc', '_AMA-Unhealthy_', $Now, '.csv')
             [System.String]$AzConnectedMachinesAMAUnhealthyReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachinesAMAUnhealthyReportFileName)
+            [System.String]$AzConnectedMachinesNotConnectedReportFileName = [System.String]::Concat($ScriptNameNoExt, '_', 'Arc', '_Not-Connected_', $Now, '.csv')
+            [System.String]$AzConnectedMachinesNotConnectedReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachinesNotConnectedReportFileName)
 
             if ($AzConnectedMachinesNoAMAArray.Count -ge 1) {
                 Write-Information -MessageData "Exporting report of Arc-enabled Servers without AMA to: '$AzConnectedMachinesNoAMAReportFilePath'."
@@ -492,6 +503,19 @@ if ($PSBoundParameters.ContainsKey('ResourceGroupName')) {
             }
             else {
                 Write-Information -MessageData 'No Arc-enabled Servers with AMA in an unhealthy state to report.'
+            }
+
+            if ($AzConnectedMachinesNotConnectedArray.Count -ge 1) {
+                Write-Information -MessageData "Exporting report of Arc-enabled Servers which are not connected to: '$AzConnectedMachinesNotConnectedReportFilePath'."
+                if ($PSCmdlet.ShouldProcess($AzConnectedMachinesNotConnectedReportFilePath)) {
+                    $AzConnectedMachinesNotConnectedArray | Export-Csv -LiteralPath $AzConnectedMachinesNotConnectedReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation
+                }
+                else {
+                    $AzConnectedMachinesNotConnectedArray | Export-Csv -LiteralPath $AzConnectedMachinesNotConnectedReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation -WhatIf
+                }
+            }
+            else {
+                Write-Information -MessageData 'No Arc-enabled Server which is not connected to report.'
             }
         }
     }
@@ -1601,6 +1625,7 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
                 [System.Collections.ArrayList]$AzConnectedMachineNoAMAArray = @()
                 [System.Collections.ArrayList]$AzConnectedMachineAMAHealthyArray = @()
                 [System.Collections.ArrayList]$AzConnectedMachineAMAUnhealthyArray = @()
+                [System.Collections.ArrayList]$AzConnectedMachineNotConnectedArray = @()
 
                 Write-Information -MessageData "Found: '$AzConnectedMachineArrayCount' Azure Arc-enabled Servers in resource group: '$ResourceGroupName'."
                 Write-Information -MessageData 'Enumerating Arc-enabled Server array to find AMA extension.'
@@ -1615,22 +1640,29 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
                         ($_.Name -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')) -and ($_.Publisher -eq 'Microsoft.Azure.Monitor')
                     }
 
-                    if ($GetAMAExtension) {
-                        Write-Information -MessageData 'Found AMA extension on Arc-enabled Server.'
+                    if ('Connected' -eq $ConnectedMachine.Status) {
+                        Write-Information -MessageData 'Arc-enabled Server is connected.'
+                        if ($GetAMAExtension) {
+                            Write-Information -MessageData 'Found AMA extension on Arc-enabled Server.'
 
-                        [System.String]$AMAExtensionProvisioningState = $GetAMAExtension.ProvisioningState
-                        if ($AMAExtensionProvisioningState -eq 'Succeeded') {
-                            Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
-                            $AzConnectedMachineAMAHealthyArray.Add($ConnectedMachine) | Out-Null
+                            [System.String]$AMAExtensionProvisioningState = $GetAMAExtension.ProvisioningState
+                            if ($AMAExtensionProvisioningState -eq 'Succeeded') {
+                                Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
+                                $AzConnectedMachineAMAHealthyArray.Add($ConnectedMachine) | Out-Null
+                            }
+                            else {
+                                Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
+                                $AzConnectedMachineAMAUnhealthyArray.Add($ConnectedMachine) | Out-Null
+                            }
                         }
                         else {
-                            Write-Information -MessageData "Extension is in a: '$AMAExtensionProvisioningState' state."
-                            $AzConnectedMachineAMAUnhealthyArray.Add($ConnectedMachine) | Out-Null
+                            Write-Information -MessageData 'Did not find AMA extension on Arc-enabled Server.'
+                            $AzConnectedMachineNoAMAArray.Add($ConnectedMachine) | Out-Null
                         }
                     }
                     else {
-                        Write-Information -MessageData 'Did not find AMA extension on Arc-enabled Server.'
-                        $AzConnectedMachineNoAMAArray.Add($ConnectedMachine) | Out-Null
+                        Write-Warning -Message "Arc-enabled Server: '$ConnectedMachineName' is not connected."
+                        $AzConnectedMachinesNotConnectedArray.Add($ConnectedMachine) | Out-Null
                     }
 
                     $i++
@@ -1652,6 +1684,8 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
                 [System.String]$AzConnectedMachineAMAHealthyReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachineAMAHealthyReportFileName)
                 [System.String]$AzConnectedMachineAMAUnhealthyReportFileName = [System.String]::Concat($ScriptNameNoExt, '_', 'Arc', '_AMA-Unhealthy_', $Now, '.csv')
                 [System.String]$AzConnectedMachineAMAUnhealthyReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachineAMAUnhealthyReportFileName)
+                [System.String]$AzConnectedMachineNotConnectedReportFileName = [System.String]::Concat($ScriptNameNoExt, '_', 'Arc', '_Not-Connected_', $Now, '.csv')
+                [System.String]$AzConnectedMachineNotConnectedReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $AzConnectedMachineNotConnectedReportFileName)
 
                 if ($AzConnectedMachineNoAMAArray.Count -ge 1) {
                     Write-Information -MessageData "Exporting report of Arc-enabled Server without AMA to: '$AzConnectedMachineNoAMAReportFilePath'."
@@ -1689,7 +1723,20 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
                     }
                 }
                 else {
-                    Write-Information -MessageData 'No Arc-enabled Server with AMA in an unhealthy state to report.'
+                    Write-Information -MessageData 'No Arc-enabled Server which is not connected to report.'
+                }
+
+                if ($AzConnectedMachineNotConnectedArray.Count -ge 1) {
+                    Write-Information -MessageData "Exporting report of Arc-enabled Server which is not connected to: '$AzConnectedMachineNotConnectedReportFilePath'."
+                    if ($PSCmdlet.ShouldProcess($AzConnectedMachineNotConnectedReportFilePath)) {
+                        $AzConnectedMachineNotConnectedArray | Export-Csv -LiteralPath $AzConnectedMachineNotConnectedReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation
+                    }
+                    else {
+                        $AzConnectedMachineNotConnectedArray | Export-Csv -LiteralPath $AzConnectedMachineNotConnectedReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation -WhatIf
+                    }
+                }
+                else {
+                    Write-Information -MessageData 'No Arc-enabled Server which is not connected to report.'
                 }
             }
             Write-Information -MessageData '== Ending Reporting phase for a single Arc-enabled Server =='
