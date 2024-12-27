@@ -1804,6 +1804,65 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
             ### BEGIN: Remediation - Resource ID - Arc ###
             Write-Information -MessageData '== Starting Remediation phase for a single Arc-enabled Server =='
             if (!($PSBoundParameters.ContainsKey('ReportOnly'))) {
+
+                if ($AzConnectedMachineAMAUnhealthyArray.Count -ge 1) {
+                    Write-Information -MessageData 'Working on removing AMA from Arc-enabled Server with an unhealthy agent before attempting to reinstall.'
+
+                    [System.Int32]$i = 1
+                    [System.Int32]$TotalCount = $AzConnectedMachineAMAUnhealthyArray.Count
+                    foreach ($ConnectedMachine in $AzConnectedMachineAMAUnhealthyArray) {
+                        [System.String]$ConnectedMachineName = $ConnectedMachine.Name
+
+                        # Arc - Windows
+                        if ('windows' -eq $ConnectedMachine.OSType) {
+                            Write-Information -MessageData "Attempting to uninstall AMA for Windows for Arc-enabled Server: '$ConnectedMachineName'. Server: '$i' of: '$TotalCount'."
+
+                            try {
+                                $ErrorActionPreference = 'Stop'
+                                if ($PSCmdlet.ShouldProcess($ConnectedMachineName)) {
+                                    Remove-AzConnectedMachineExtension -ResourceGroupName $ConnectedMachine.ResourceGroupName -MachineName $ConnectedMachineName -Name AzureMonitorWindowsAgent
+
+                                    Write-Information -MessageData "Adding Arc-enabled Server: '$ConnectedMachineName' to array of Arc-enabled Servers without AMA for reinstallation."
+                                    $AzConnectedMachineNoAMAArray.Add($ConnectedMachine) | Out-Null
+                                }
+                                else {
+                                    Remove-AzConnectedMachineExtension -ResourceGroupName $ConnectedMachine.ResourceGroupName -MachineName $ConnectedMachineName -Name AzureMonitorWindowsAgent -WhatIf
+                                }
+                            }
+                            catch {
+                                $_
+                            }
+                        }
+                        # Arc - Linux
+                        elseif ('linux' -eq $ConnectedMachine.OSType) {
+                            Write-Information -MessageData "Attempting to uninstall AMA for Linux for Arc-enabled Server: '$ConnectedMachineName'. Server: '$i' of: '$TotalCount'."
+
+                            try {
+                                $ErrorActionPreference = 'Stop'
+                                if ($PSCmdlet.ShouldProcess($ConnectedMachineName)) {
+                                    Remove-AzConnectedMachineExtension -ResourceGroupName $ConnectedMachine.ResourceGroupName -MachineName $ConnectedMachineName -Name AzureMonitorLinuxAgent
+
+                                    Write-Information -MessageData "Adding Arc-enabled Server: '$ConnectedMachineName' to array of Arc-enabled Servers without AMA for reinstallation."
+                                    $AzConnectedMachineNoAMAArray.Add($ConnectedMachine) | Out-Null
+                                }
+                                else {
+                                    Remove-AzConnectedMachineExtension -ResourceGroupName $ConnectedMachine.ResourceGroupName -MachineName $ConnectedMachineName -Name AzureMonitorLinuxAgent -WhatIf
+                                }
+                            }
+                            catch {
+                                $_
+                            }
+                        }
+                        else {
+                            Write-Information -MessageData "The OS Profile configuration for Arc-enabled Server: '$ConnectedMachineName' is unrecognized. Moving on."
+                        }
+                        $i++
+                    }
+                }
+                else {
+                    Write-Information -MessageData 'No Arc-enabled Servers with an unhealthy AMA to uninstall.'
+                }
+
                 if ($AzConnectedMachineNoAMAArray.Count -ge 1) {
                     Write-Information -MessageData 'Working on remediating Arc-enabled Servers without AMA or those which had an unhealthy AMA.'
 
