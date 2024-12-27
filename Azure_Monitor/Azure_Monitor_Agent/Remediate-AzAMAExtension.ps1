@@ -14,6 +14,8 @@
 
     This script works at the Azure management plane. It does not directly interact with an Operating System.
 
+    It requires the Az.Accounts, Az.Compute, Az.ConnectedMachine, and Az.Resources PowerShell modules.
+
     This script is provided AS-IS with no warranties or claims it'll work as described. Please review the code and test in a safe environment.
     Executing this script is done at your own risk ;) .
 
