@@ -9,7 +9,7 @@
     The script works at resource group and resource scopes across the three different resource types currently supported by the AMA,
     which are Virtual Machines, Virtual Machine Scale Sets, or Arc-enabled Servers.
 
-    It has "WhatIf" support, and reports on its findings before attempting any changes.
+    It has "WhatIf" support, and can report on its findings before attempting any changes.
 
     This script is provided AS-IS with no warranties or claims it'll work as described. Please review the code and test in a safe environment.
     Executing this script is done at your own risk ;) .
