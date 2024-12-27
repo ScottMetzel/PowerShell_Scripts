@@ -1,21 +1,74 @@
 #Requires -Modules Az.Accounts, Az.Compute, Az.ConnectedMachine, Az.Resources
 <#
-    .DESCRIPTION
-        This script is provided AS-IS with no warranties or claims it'll work as described. Please review the code and test in a safe environment.
-        Executing this script is done at your own risk ;) .
+    .SYNOPSIS
+    This script attempts to install Microsoft's Azure Monitor Agent on servers.
 
-        This script remediates missing Azure Monitor agent extensions from Azure VMs, VM Scale Sets, and Arc-enabled Servers.
-        It can report on the state of the extension or add, add/remove in the event of a failed installation, or remove the extension.
-        This script works at the Azure management plane. It does not directly interact with an Operating System.
+    .DESCRIPTION
+    This script attempts to install Microsoft's Azure Monitor Agent ("AMA") on servers.
+    If the agent is missing or unhealthy, it's added to a server.
+    The script works at resource group and resource scopes across the three different resource types currently supported by the AMA,
+    which are Virtual Machines, Virtual Machine Scale Sets, or Arc-enabled Servers.
+
+    It has "WhatIf" support, and reports on its findings before attempting any changes.
+
+    This script is provided AS-IS with no warranties or claims it'll work as described. Please review the code and test in a safe environment.
+    Executing this script is done at your own risk ;) .
+
+    This script remediates missing Azure Monitor agent extensions from Azure VMs, VM Scale Sets, and Arc-enabled Servers.
+    It can report on the state of the extension or add, add/remove in the event of a failed installation, or remove the extension.
+    This script works at the Azure management plane. It does not directly interact with an Operating System.
 
     .NOTES
-		===========================================================================
-		Created with: 	Microsoft Visual Studio Code
-		Created on:   	12/06/2024 11:32 AM
-		Created by:   	Scott Metzel
-		Organization: 	-
-		Filename:     	Remediate-AzAMAExtension.ps1
-		===========================================================================
+    ===========================================================================
+    Created with: 	Microsoft Visual Studio Code
+    Created on:   	12/06/2024 11:32 AM
+    Created by:   	Scott Metzel
+    Organization: 	-
+    Filename:     	Remediate-AzAMAExtension.ps1
+    ===========================================================================
+
+    .PARAMETER ResourceGroupName
+    Supply the name of a resource group. Sets the script to run at a resource group scope.
+
+    .PARAMETER RemediateResourceTypes
+    Configures the script to look for certain resource types.
+
+    .PARAMETER ResourceID
+    Supply a Resource ID for a VM, VM Scale Set, or Arc-enabled Server. Sets the script to run at a resource scope.
+
+    .PARAMETER ProxyURLAndPort
+    Configures the Azure Monitor Agent to use a proxy. Use the format "http://myproxy.mycompany.org:PortNumber".
+
+    .PARAMETER ProxyCredential
+    Supply a PSCredential Object. Configures the Azure Monitor Agent to use an authenticated proxy.
+
+    .PARAMETER ReportDirectoryPath
+    Supply a directory path to store reports in. Configures the script to report on its findings.
+
+    .PARAMETER ReportOnly
+    Configures the script to only report on its findings, and not make any state changes.
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -ReportDirectoryPath "C:\Temp\" -ReportOnly
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -ReportDirectoryPath "C:\Temp\" -WhatIf
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -RemediateResourceTypes "VirtualMachines" -ReportDirectoryPath "C:\Temp\" -WhatIf
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -RemediateResourceTypes "VirtualMachines" -ReportDirectoryPath "C:\Temp\"
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceID "/subscriptions/18939564-5bf5-4448-bd41-c261f2b7d5b2/resourceGroups/r/providers/Microsoft.HybridCompute/Machines/a" -ReportDirectoryPath "C:\Temp\" -ReportOnly
+
+    .EXAMPLE
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -ReportDirectoryPath "C:\Temp\" -ProxyURLAndPort "http://myproxy.org:8080"
+
+    .EXAMPLE
+    $GetProxyCredential = Get-Credential -Message "Credentials Used for Proxy?"
+    Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -ReportDirectoryPath "C:\Temp\" -ProxyURLAndPort "http://myproxy.org:8080" -ProxyCredential $GetProxyCredential
 #>
 [CmdletBinding(
     SupportsShouldProcess,
@@ -100,6 +153,12 @@ if ($ReportDirectoryPath.Length -ge 3) {
 ### END: Report Setup ###
 
 ### BEGIN: Proxy Configuration ###
+# Test for a scenario where proxy credentials were supplied without a proxy to use
+if ($PSBoundParameters.ContainsKey('ProxyCredentials') -and (!($PSBoundParameters.ContainsKey('ProxyURLAndPort')))) {
+    Write-Error -Message 'Proxy credentials were supplied without a proxy to use. Did you forget something?'
+    throw
+}
+
 if ($PSBoundParameters.ContainsKey('ProxyURLAndPort')) {
     Write-Information -MessageData 'Setting up script to configure proxy settings on AMA Extension.'
 
