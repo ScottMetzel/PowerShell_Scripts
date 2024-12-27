@@ -1696,7 +1696,7 @@ elseif ($PSBoundParameters.ContainsKey('ResourceID')) {
                     [System.String]$ConnectedMachineName = $ConnectedMachine.Name
 
                     Write-Information -MessageData "Looking for AMA extension on Arc-enabled Server: '$ConnectedMachineName' in resource group. Server: '$i' of: '$TotalCount'."
-                    $GetAMAExtension = $ConnectedMachine.VirtualMachineProfile.ExtensionProfile.Extensions | Where-Object -FilterScript {
+                    $GetAMAExtension = Get-AzConnectedMachineExtension -ResourceGroupName $ConnectedMachineResourceGroupName -MachineName $ConnectedMachineName | Where-Object -FilterScript {
                         ($_.Name -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')) -and ($_.Publisher -eq 'Microsoft.Azure.Monitor')
                     }
 
