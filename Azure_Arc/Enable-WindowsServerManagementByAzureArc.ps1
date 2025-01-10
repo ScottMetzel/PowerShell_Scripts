@@ -1,7 +1,17 @@
 [CmdletBInding()]
 param(
+    [Parameter(
+        Mandatory = $true
+    )]
     [System.String]$AzSubscriptionID,
-    [System.String]$ResourceGroupName
+    [Parameter(
+        Mandatory = $true
+    )]
+    [System.String]$ResourceGroupName,
+    [Parameter(
+        Mandatory = $false
+    )]
+    [System.String[]]$MachineNames
 )
 $InformationPreference = 'Continue'
 $GetAzContext = Get-AzContext
@@ -23,8 +33,16 @@ Write-Information -MessageData 'Getting Azure Arc-enabled Servers.'
 [System.Collections.ArrayList]$MachinesArray = @()
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzResource -ResourceGroupName $ResourceGroupName -ResourceType 'Microsoft.HybridCompute/machines' | ForEach-Object -Process {
-        $MachinesArray.Add($_) | Out-Null
+
+    if ($PSBoundParameters.ContainsKey('MachineNames')) {
+        Get-AzResource -ResourceGroupName $ResourceGroupName -ResourceType 'Microsoft.HybridCompute/machines' | Where-Object -FilterScript { $_.Name -in $MachineNames } | ForEach-Object -Process {
+            $MachinesArray.Add($_) | Out-Null
+        }
+    }
+    else {
+        Get-AzResource -ResourceGroupName $ResourceGroupName -ResourceType 'Microsoft.HybridCompute/machines' | ForEach-Object -Process {
+            $MachinesArray.Add($_) | Out-Null
+        }
     }
 }
 catch {
@@ -54,7 +72,7 @@ if (0 -lt $MachinesArray.Count) {
         throw
     }
 
-    Write-Information -MessageData 'Looping through machines.'
+    Write-Information -MessageData 'Looping through machines...'
     foreach ($Machine in $MachinesArray) {
         [System.String]$MachineName = $Machine.Name
         [System.String]$MachineResourceGroupName = $Machine.ResourceGroupName
