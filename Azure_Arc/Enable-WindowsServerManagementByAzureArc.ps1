@@ -5,7 +5,7 @@ param(
     )]
     [System.String]$AzSubscriptionID,
     [Parameter(
-        Mandatory = $true
+        Mandatory = $false
     )]
     [System.String]$ResourceGroupName,
     [Parameter(
@@ -14,6 +14,8 @@ param(
     [System.String[]]$MachineNames
 )
 $InformationPreference = 'Continue'
+
+Write-Information -MessageData 'Getting current Azure context...'
 $GetAzContext = Get-AzContext
 
 if ($GetAzContext) {
@@ -26,11 +28,15 @@ else {
 
 if ($AzSubscriptionID -ne $GetAzContext.Subscription.Id) {
     Write-Information -MessageData "Changing context to subscription: '$AzSubscriptionID'."
-    Get-AzSubscription -SubscriptionId $AzSubscriptionID | Set-AzContext
+    Get-AzSubscription -SubscriptionId $AzSubscriptionID | Set-AzContext | Out-Null
 
     Write-Information -MessageData 'Getting Azure Context again.'
     $GetAzContext = Get-AzContext
 }
+
+Write-Information -MessageData 'Getting subscription...'
+$GetAzSubscription = Get-AzSubscription -SubscriptionId $AzSubscriptionID
+[System.String]$AzSubscriptionName = $GetAzSubscription.Name
 
 Write-Information -MessageData 'Getting Azure Arc-enabled Servers.'
 [System.Collections.ArrayList]$MachinesArray = @()
@@ -38,12 +44,20 @@ try {
     $ErrorActionPreference = 'Stop'
 
     if ($PSBoundParameters.ContainsKey('MachineNames')) {
+        Write-Information -MessageData "Getting specific Arc-enabled Servers in resource group: '$ResourceGroupName' in subscription: '$AzSubscriptionName'."
         Get-AzResource -ResourceGroupName $ResourceGroupName -ResourceType 'Microsoft.HybridCompute/machines' | Where-Object -FilterScript { $_.Name -in $MachineNames } | Sort-Object -Property Name | ForEach-Object -Process {
             $MachinesArray.Add($_) | Out-Null
         }
     }
-    else {
+    elseif ($PSBoundParameters.ContainsKey('ResourceGroupName')) {
+        Write-Information -MessageData "Getting all Arc-enabled Servers in resource group: '$ResourceGroupName' in subscription: '$AzSubscriptionName'."
         Get-AzResource -ResourceGroupName $ResourceGroupName -ResourceType 'Microsoft.HybridCompute/machines' | Sort-Object -Property Name | ForEach-Object -Process {
+            $MachinesArray.Add($_) | Out-Null
+        }
+    }
+    else {
+        Write-Information -MessageData "Getting all Arc-enabled Servers in subscription: '$AzSubscriptionName'."
+        Get-AzResource -ResourceType 'Microsoft.HybridCompute/machines' | Sort-Object -Property Name | ForEach-Object -Process {
             $MachinesArray.Add($_) | Out-Null
         }
     }
@@ -103,9 +117,10 @@ if (0 -lt $MachinesArray.Count) {
 
             $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $HeaderTable -Body $JSON
             [PSCustomObject]$ResponseTable = @{
-                MachineName       = $MachineName
-                ProvisioningState = $Response.Properties.provisioningState
-                SoftwareAssurance = $Response.Properties.softwareAssurance
+                ServerNumber      = $i;
+                MachineName       = $MachineName;
+                ProvisioningState = $Response.Properties.provisioningState;
+                SoftwareAssurance = $Response.Properties.softwareAssurance;
             }
             $ResponseArray.Add($ResponseTable) | Out-Null
 
@@ -122,6 +137,6 @@ else {
     Write-Warning -Message "Didn't find any Arc-enabled Servers :( ."
 }
 Write-Information -MessageData 'Results: '
-$ResponseArray | Select-Object -Property 'MachineName', 'ProvisioningState', 'SoftwareAssurance' | Format-Table -AutoSize
+$ResponseArray | Select-Object -Property 'ServerNumber', 'MachineName', 'ProvisioningState', 'SoftwareAssurance' | Format-Table -AutoSize
 
 Write-Information -MessageData 'Exiting.'
