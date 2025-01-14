@@ -22,6 +22,8 @@
     Created by:   	Scott Metzel
     Organization: 	-
     Filename:     	Enable-WindowsServerManagementByAzureArc.ps1
+    Comments:       This script builds on Kevin Sullivan's original script, here:
+                    https://github.com/kevinsul/arc-ws-sa-enable/blob/main/arc-ws-sa-enable.ps1
     ===========================================================================
 
     .PARAMETER TenantID
