@@ -1,5 +1,3 @@
-#Requires -Version 7.0
-#Requires -Modules Az.Accounts, Az.Resources
 <#
     .SYNOPSIS
     This script attempts to enroll Arc-enabled Servers in Windows Server Management.
@@ -39,29 +37,34 @@
     Supply a string array of machine names. Sets the script to run at a subscription scope, but across resource groups within the subscription.
 
     .EXAMPLE
-    [System.String]$TenantID = '00000000-0000-0000-0000-000000000000'
-    Connect-AzAccount -TenantID $TenantID
-    Enable-WindowsServerManagementByAzureArc.ps1 -TenantID $TenantID
+    PS> [System.String]$TenantID = '00000000-0000-0000-0000-000000000000'
+    PS> Connect-AzAccount -TenantID $TenantID
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantID $TenantID
 
     .EXAMPLE
-    Connect-AzAccount
-    Enable-WindowsServerManagementByAzureArc.ps1 -AzSubscriptionID '00000000-0000-0000-0000-000000000000'
+    PS> Connect-AzAccount
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -AzSubscriptionID '00000000-0000-0000-0000-000000000000'
 
     .EXAMPLE
-    Connect-AzAccount
-    Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01'
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01'
 
     .EXAMPLE
-    Connect-AzAccount
-    Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1'
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1'
 
     .EXAMPLE
-    Connect-AzAccount
-    Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
+
+    .OUTPUTS
+    System.Collections.ArrayList
 #>
+#Requires -Version 7.0
+#Requires -Modules Az.Accounts, Az.Resources
 [CmdletBInding()]
 [OutputType([System.Collections.ArrayList])]
 param(
