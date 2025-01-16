@@ -181,7 +181,7 @@ function DiscoverMachines {
         switch ($PSCmdlet.ParameterSetName) {
             'AzSubscriptions' {
                 Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName'."
-                [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer == true"
+                [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer == true"
 
                 Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                     $MachinesArray.Add($_) | Out-Null
@@ -190,7 +190,7 @@ function DiscoverMachines {
             'ResourceGroupOrMachines' {
                 if ($PSBoundParameters.ContainsKey('ResourceGroupName') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
                     Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName' in resource group: '$ResourceGroupName' ."
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and resourceGroup == '", $resourceGroupName, "' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true")
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup == '", $resourceGroupName, "' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true")
 
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
@@ -205,8 +205,7 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
-                    Write-Information -MessageData "Machine query string: $ResourceGraphQuery"
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
@@ -220,7 +219,7 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup == '", $resourceGroupName, "' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
@@ -484,4 +483,8 @@ if (0 -lt $ResponseArray.Count) {
     Write-Information -MessageData 'Results: '
     $ResponseArray | Select-Object -Property 'MachineName', 'ProvisioningState', 'ResourceID', 'SoftwareAssurance' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
 }
+else {
+    Write-Information -MessageData 'No results to output.'
+}
+
 Write-Information -MessageData 'Exiting.'
