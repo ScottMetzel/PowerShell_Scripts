@@ -39,9 +39,10 @@
     Supply a string array of machine names. Sets the script to run at a subscription scope, but across resource groups within the subscription.
 
     .EXAMPLE
-    PS> [System.String]$TenantIDs = '00000000-0000-0000-0000-000000000000'
-    PS> Connect-AzAccount -TenantID $TenantIDs
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantIDs
+    PS> [System.String]$TenantID1 = '00000000-0000-0000-0000-000000000000'
+    PS> [System.String]$TenantID2 = '11111111-1111-1111-1111-111111111111'
+    PS> Connect-AzAccount -TenantID $TenantID1
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantID1, $TenantID2
 
     .EXAMPLE
     PS> Connect-AzAccount
@@ -93,7 +94,7 @@ param(
         Mandatory = $false,
         ParameterSetName = 'AzEnvironments'
     )]
-    [System.String]$TenantIDs,
+    [System.String[]]$TenantIDs,
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'AzSubscriptions'
@@ -108,7 +109,7 @@ param(
         Mandatory = $false,
         ParameterSetName = 'ResourceGroupOrMachines'
     )]
-    [System.String]$ResourceGroupNames,
+    [System.String[]]$ResourceGroupNames,
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'ResourceGroupOrMachines'
