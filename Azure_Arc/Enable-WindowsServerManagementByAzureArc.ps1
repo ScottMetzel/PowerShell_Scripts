@@ -87,7 +87,10 @@
 #>
 #Requires -Version 7.0
 #Requires -Modules Az.Accounts, Az.Resources
-[CmdletBInding()]
+[CmdletBinding(
+    SupportsShouldProcess,
+    ConfirmImpact = 'Low'
+)]
 [OutputType([System.Collections.ArrayList])]
 param(
     [Parameter(
@@ -130,7 +133,9 @@ else {
 }
 
 function CreateBearerTokenHeaderTable {
-    [CmdletBInding()]
+    [CmdletBinding(
+        ConfirmImpact = 'Low'
+    )]
     [OutputType([System.Collections.Hashtable])]
     param ()
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
@@ -158,7 +163,10 @@ function CreateBearerTokenHeaderTable {
 }
 
 function DiscoverMachines {
-    [CmdletBInding()]
+    [CmdletBinding(
+        SupportsShouldProcess,
+        ConfirmImpact = 'Low'
+    )]
     [OutputType([System.Array])]
     param (
         [Parameter(
@@ -175,7 +183,7 @@ function DiscoverMachines {
             Mandatory = $false,
             ParameterSetName = 'ResourceGroupOrMachines'
         )]
-        [System.String]$ResourceGroupNames,
+        [System.String[]]$ResourceGroupNames,
         [Parameter(
             Mandatory = $false,
             ParameterSetName = 'ResourceGroupOrMachines'
@@ -240,7 +248,7 @@ function DiscoverMachines {
                 $GetAzContext = Get-AzContext
                 [System.String]$AzSubscriptionName = $GetAzContext.Subscription.Name
                 [System.String]$AzSubscriptionID = $GetAzContext.Subscription.Id
-                if ($PSBoundParameters.ContainsKey('ResourceGroupName') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
+                if ($PSBoundParameters.ContainsKey('ResourceGroupNames') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
                     Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName' in resource group: '$ResourceGroupNames' ."
                     if (1 -lt $MachineNames.Count) {
                         [System.String]$ResourceGroupNamesString = ($ResourceGroupNames | ForEach-Object { "'$_'" }) -join ','
@@ -262,7 +270,7 @@ function DiscoverMachines {
                         throw
                     }
                 }
-                elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupName'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
+                elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupNames'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
                     Write-Information -MessageData "Getting Arc-enabled Windows Servers not already enrolled across resource groups in subscription: '$AzSubscriptionName'."
                     if (1 -lt $MachineNames.Count) {
                         [System.String]$MachineNamesString = ($MachineNames | ForEach-Object { "'$_'" }) -join ','
@@ -327,7 +335,10 @@ function DiscoverMachines {
 }
 
 function EnrollMachine {
-    [CmdletBInding()]
+    [CmdletBinding(
+        SupportsShouldProcess,
+        ConfirmImpact = 'Low'
+    )]
     [OutputType([PSCustomObject])]
     param (
         [PSObject]$Machine,
@@ -363,12 +374,20 @@ function EnrollMachine {
     try {
         $ErrorActionPreference = 'Stop'
 
-        $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
-        [PSCustomObject]$ResponseTable = @{
-            MachineName       = $MachineName;
-            ResourceID        = $Machine.ResourceID
-            ProvisioningState = $Response.Properties.provisioningState;
-            SoftwareAssurance = $Response.Properties.softwareAssurance;
+        if ($PSCmdlet.ShouldProcess($AzVMsNoAMAReportFilePath)) {
+            $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
+            [PSCustomObject]$ResponseTable = @{
+                MachineName       = $MachineName;
+                ResourceID        = $Machine.ResourceID
+                ProvisioningState = $Response.Properties.provisioningState;
+                SoftwareAssurance = $Response.Properties.softwareAssurance;
+            }
+        }
+        else {
+            # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
+            # This may be short lived once changed to Invoke-AzRestMethod, which does
+            [System.String]$JSONString = [System.Convert]::ToString($JSON)
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'"
         }
 
         $ResponseTable
@@ -443,7 +462,7 @@ switch ($PSCmdlet.ParameterSetName) {
             }
         }
         else {
-            Write-Information -MessageData 'Did not find any eligible Arc-enabled servers in subscriptions: '$AzSubscriptionIDsString'.'
+            Write-Information -MessageData "Did not find any eligible Arc-enabled servers in subscriptions: '$AzSubscriptionIDsString'."
         }
     }
     'ResourceGroupOrMachines' {
@@ -453,12 +472,12 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData 'Getting Bearer token.'
         [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
 
-        if ($PSBoundParameters.ContainsKey('ResourceGroupName') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
+        if ($PSBoundParameters.ContainsKey('ResourceGroupNames') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
             Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
             #[System.Collections.ArrayList]$MachinesArray = @()
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupNames
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames
         }
-        elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupName'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
+        elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupNames'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
             if (1 -lt $MachineNames.Count) {
                 [System.String]$MachineNamesString = $MachineNames -join ', '
             }
@@ -479,8 +498,7 @@ switch ($PSCmdlet.ParameterSetName) {
 
             Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
             Write-Information -MessageData 'Machine names: '$MachineNamesString'."
-            #[System.Collections.ArrayList]$MachinesArray = @()
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupNames -MachineNames $MachineNames
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames
         }
     }
     default {
