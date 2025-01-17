@@ -234,9 +234,9 @@ function DiscoverMachines {
                         [System.String]$ResourceGroupNamesString = [System.String]::Concat('''', $ResourceGroupNames, '''')
                     }
                     [System.String]$ResourceGroupNamesQueryArrayString = [System.String]::Concat('(', $ResourceGroupNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
-                    Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
                 }
@@ -249,8 +249,8 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
-                    Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
                 }
@@ -271,8 +271,8 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
-                    Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
                 }
