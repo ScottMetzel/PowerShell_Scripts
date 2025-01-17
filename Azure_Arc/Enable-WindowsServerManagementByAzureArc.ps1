@@ -201,8 +201,15 @@ function DiscoverMachines {
                 [System.String]$TenantIDsQueryArrayString = [System.String]::Concat('(', $TenantIDsString , ')')
                 [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and tenantId in", $TenantIDsQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
-                Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
-                    $MachinesArray.Add($_) | Out-Null
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                        $MachinesArray.Add($_) | Out-Null
+                    }
+                }
+                catch {
+                    $_
+                    throw
                 }
             }
             'AzSubscriptions' {
@@ -216,8 +223,15 @@ function DiscoverMachines {
                 [System.String]$AzSubscriptionIDsQueryArrayString = [System.String]::Concat('(', $AzSubscriptionIDsString , ')')
                 [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId in ", $AzSubscriptionIDsQueryArrayString, 'and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
-                Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
-                    $MachinesArray.Add($_) | Out-Null
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                        $MachinesArray.Add($_) | Out-Null
+                    }
+                }
+                catch {
+                    $_
+                    throw
                 }
             }
             'ResourceGroupOrMachines' {
@@ -236,8 +250,15 @@ function DiscoverMachines {
                     [System.String]$ResourceGroupNamesQueryArrayString = [System.String]::Concat('(', $ResourceGroupNamesString , ')')
                     [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
-                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
-                        $MachinesArray.Add($_) | Out-Null
+                    try {
+                        $ErrorActionPreference = 'Stop'
+                        Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
+                            $MachinesArray.Add($_) | Out-Null
+                        }
+                    }
+                    catch {
+                        $_
+                        throw
                     }
                 }
                 elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupName'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
@@ -250,8 +271,15 @@ function DiscoverMachines {
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
                     [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
-                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
-                        $MachinesArray.Add($_) | Out-Null
+                    try {
+                        $ErrorActionPreference = 'Stop'
+                        Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
+                            $MachinesArray.Add($_) | Out-Null
+                        }
+                    }
+                    catch {
+                        $_
+                        throw
                     }
                 }
                 else {
@@ -272,8 +300,16 @@ function DiscoverMachines {
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
                     [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
-                    Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
-                        $MachinesArray.Add($_) | Out-Null
+
+                    try {
+                        $ErrorActionPreference = 'Stop'
+                        Search-AzGraph -Query $ResourceGraphQuery -Subscription $AzSubscriptionID | Sort-Object -Property Name | ForEach-Object -Process {
+                            $MachinesArray.Add($_) | Out-Null
+                        }
+                    }
+                    catch {
+                        $_
+                        throw
                     }
                 }
             }
