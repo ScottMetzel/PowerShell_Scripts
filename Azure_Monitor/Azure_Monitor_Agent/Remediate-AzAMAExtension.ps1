@@ -1,4 +1,3 @@
-#Requires -Modules Az.Accounts, Az.Compute, Az.ConnectedMachine, Az.Resources
 <#
     .SYNOPSIS
     This script attempts to install Microsoft's Azure Monitor Agent on servers.
@@ -71,6 +70,7 @@
     $GetProxyCredential = Get-Credential -Message "Credentials Used for Proxy?"
     Remediate-AzAMAExtension.ps1 -ResourceGroupName "MyResourceGroup" -ReportDirectoryPath "C:\Temp\" -ProxyURLAndPort "http://myproxy.org:8080" -ProxyCredential $GetProxyCredential
 #>
+#Requires -Modules Az.Accounts, Az.Compute, Az.ConnectedMachine, Az.Resources
 [CmdletBinding(
     SupportsShouldProcess,
     ConfirmImpact = 'Medium'
