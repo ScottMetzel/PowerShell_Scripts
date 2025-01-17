@@ -26,22 +26,22 @@
                     https://github.com/kevinsul/arc-ws-sa-enable/blob/main/arc-ws-sa-enable.ps1
     ===========================================================================
 
-    .PARAMETER TenantID
+    .PARAMETER TenantIDs
     Supply the ID of an Entra ID tenant. Sets the script to run at an Azure environment scope across all subscriptions attached to the tenant.
 
-    .PARAMETER AzSubscriptionID
+    .PARAMETER AzSubscriptionIDs
     Supply an Azure subscription ID. Sets the script to run at an Azure subscription scope.
 
-    .PARAMETER ResourceGroupName
+    .PARAMETER ResourceGroupNames
     Supply the name of a resource group in the current Azure contxt. Sets the script to run at an Azure resource group scope.
 
     .PARAMETER MachineNames
     Supply a string array of machine names. Sets the script to run at a subscription scope, but across resource groups within the subscription.
 
     .EXAMPLE
-    PS> [System.String]$TenantID = '00000000-0000-0000-0000-000000000000'
-    PS> Connect-AzAccount -TenantID $TenantID
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantID $TenantID
+    PS> [System.String]$TenantIDs = '00000000-0000-0000-0000-000000000000'
+    PS> Connect-AzAccount -TenantID $TenantIDs
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantIDs
 
     .EXAMPLE
     PS> Connect-AzAccount
@@ -49,22 +49,32 @@
 
     .EXAMPLE
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -AzSubscriptionIDs '00000000-0000-0000-0000-000000000000', '12345678-9012-3456-7890-123456789012'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -AzSubscriptionIDs '00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111'
 
     .EXAMPLE
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01'
 
     .EXAMPLE
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02'
 
     .EXAMPLE
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupName 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1'
+
+    .EXAMPLE
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
+
+    .EXAMPLE
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
 
     .EXAMPLE
     PS> Connect-AzAccount
@@ -81,9 +91,9 @@
 param(
     [Parameter(
         Mandatory = $false,
-        ParameterSetName = 'AzEnvironment'
+        ParameterSetName = 'AzEnvironments'
     )]
-    [System.String]$TenantID,
+    [System.String]$TenantIDs,
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'AzSubscriptions'
@@ -98,7 +108,7 @@ param(
         Mandatory = $false,
         ParameterSetName = 'ResourceGroupOrMachines'
     )]
-    [System.String]$ResourceGroupName,
+    [System.String]$ResourceGroupNames,
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'ResourceGroupOrMachines'
@@ -150,17 +160,21 @@ function DiscoverMachines {
     [CmdletBInding()]
     [OutputType([System.Array])]
     param (
-        [System.String]$TenantID,
+        [Parameter(
+            Mandatory = $false,
+            ParameterSetName = 'AzEnvironments'
+        )]
+        [System.String[]]$TenantIDs,
         [Parameter(
             Mandatory = $false,
             ParameterSetName = 'AzSubscriptions'
         )]
-        [System.String]$AzSubscriptionIDs,
+        [System.String[]]$AzSubscriptionIDs,
         [Parameter(
             Mandatory = $false,
             ParameterSetName = 'ResourceGroupOrMachines'
         )]
-        [System.String]$ResourceGroupName,
+        [System.String]$ResourceGroupNames,
         [Parameter(
             Mandatory = $false,
             ParameterSetName = 'ResourceGroupOrMachines'
@@ -170,27 +184,57 @@ function DiscoverMachines {
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
 
-    Write-Information -MessageData 'Getting context.'
-    $GetAzContext = Get-AzContext
-    [System.String]$AzSubscriptionName = $GetAzContext.Subscription.Name
     [System.Collections.ArrayList]$MachinesArray = @()
 
     try {
         $ErrorActionPreference = 'Stop'
 
         switch ($PSCmdlet.ParameterSetName) {
+            'AzEnvironments' {
+                Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled across all subscriptions in tenants: $TenantIDsString."
+                if (1 -lt $TenantIDs.Count) {
+                    [System.String]$TenantIDsString = ($TenantIDs | ForEach-Object { "'$_'" }) -join ','
+                }
+                else {
+                    [System.String]$TenantIDsString = [System.String]::Concat('''', $TenantIDs, '''')
+                }
+                [System.String]$TenantIDsQueryArrayString = [System.String]::Concat('(', $TenantIDsString , ')')
+                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and tenantId in", $TenantIDsQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+
+                Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
+                    $MachinesArray.Add($_) | Out-Null
+                }
+            }
             'AzSubscriptions' {
-                Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName'."
-                [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer == true"
+                Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscriptions: '$AzSubscriptionIDsString'."
+                if (1 -lt $AzSubscriptionIDs.Count) {
+                    [System.String]$AzSubscriptionIDsString = ($AzSubscriptionIDs | ForEach-Object { "'$_'" }) -join ','
+                }
+                else {
+                    [System.String]$AzSubscriptionIDsString = [System.String]::Concat('''', $AzSubscriptionIDs, '''')
+                }
+                [System.String]$AzSubscriptionIDsQueryArrayString = [System.String]::Concat('(', $AzSubscriptionIDsString , ')')
+                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId in ", $AzSubscriptionIDsQueryArrayString, 'and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
                 Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                     $MachinesArray.Add($_) | Out-Null
                 }
             }
             'ResourceGroupOrMachines' {
+                Write-Information -MessageData 'Getting context.'
+                $GetAzContext = Get-AzContext
+                [System.String]$AzSubscriptionName = $GetAzContext.Subscription.Name
+                [System.String]$AzSubscriptionID = $GetAzContext.Subscription.Id
                 if ($PSBoundParameters.ContainsKey('ResourceGroupName') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
-                    Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName' in resource group: '$ResourceGroupName' ."
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup == '", $resourceGroupName, "' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true")
+                    Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscription: '$AzSubscriptionName' in resource group: '$ResourceGroupNames' ."
+                    if (1 -lt $MachineNames.Count) {
+                        [System.String]$ResourceGroupNamesString = ($ResourceGroupNames | ForEach-Object { "'$_'" }) -join ','
+                    }
+                    else {
+                        [System.String]$ResourceGroupNamesString = [System.String]::Concat('''', $ResourceGroupNames, '''')
+                    }
+                    [System.String]$ResourceGroupNamesQueryArrayString = [System.String]::Concat('(', $ResourceGroupNamesString , ')')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
 
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
@@ -205,13 +249,21 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
                 }
                 else {
-                    Write-Information -MessageData "Getting specific Arc-enabled Windows Servers not already enrolled in resource group: '$ResourceGroupName' in subscription: '$AzSubscriptionName'."
+                    Write-Information -MessageData "Getting specific Arc-enabled Windows Servers not already enrolled in resource groups: '$ResourceGroupNames' in subscription: '$AzSubscriptionName'."
+                    if (1 -lt $MachineNames.Count) {
+                        [System.String]$ResourceGroupNamesString = ($ResourceGroupNames | ForEach-Object { "'$_'" }) -join ','
+                    }
+                    else {
+                        [System.String]$ResourceGroupNamesString = [System.String]::Concat('''', $ResourceGroupNames, '''')
+                    }
+                    [System.String]$ResourceGroupNamesQueryArrayString = [System.String]::Concat('(', $ResourceGroupNamesString , ')')
+
                     if (1 -lt $MachineNames.Count) {
                         [System.String]$MachineNamesString = ($MachineNames | ForEach-Object { "'$_'" }) -join ','
                     }
@@ -219,7 +271,7 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and resourceGroup == '", $resourceGroupName, "' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
                     Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
                         $MachinesArray.Add($_) | Out-Null
                     }
@@ -227,6 +279,7 @@ function DiscoverMachines {
             }
         }
 
+        ## 01.16.2025 - TO DO: Change output to hashtable to return ineligible servers
         Write-Information -MessageData 'Outputting array result.'
         $MachinesArray
     }
@@ -293,62 +346,34 @@ function EnrollMachine {
 [System.Collections.ArrayList]$ResponseArray = @()
 
 switch ($PSCmdlet.ParameterSetName) {
-    'AzEnvironment' {
-        Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers across all Azure subscriptions in Entra ID tenant: '$TenantID'."
+    'AzEnvironments' {
+        Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers across all Azure subscriptions in Entra ID tenant: '$TenantIDs'."
 
-        Write-Information -MessageData 'Getting subscriptions'
+        Write-Information -MessageData 'Getting Bearer token.'
+        [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
 
-        ## TO-DO: 01.13.2025 - Add ability to filter out invalid offer types.
-        [System.Collections.ArrayList]$AzSubscriptionsArray = @()
-        Get-AzSubscription -TenantId $TenantID | Sort-Object -Property 'Name' | ForEach-Object -Process {
-            $AzSubscriptionsArray.Add($_) | Out-Null
-        }
+        Write-Information -MessageData 'Discovering machines...'
+        [System.Array]$MachinesArray = DiscoverMachines -TenantIDs $TenantIDs
 
-        [System.Int32]$i = 1
-        [System.Int32]$AzSubscriptionArrayCount = $AzSubscriptionsArray.Count
-        if (1 -le $AzSubscriptionArrayCount) {
-            Write-Information -MessageData "Found: '$AzSubscriptionArrayCount' Azure subscriptions in tenant: '$TenantID'."
+        [System.Int32]$MachinesArrayCount = $MachinesArray.Count
+        if (1 -le $MachinesArrayCount) {
+            Write-Information -MessageData "Found: '$MachinesArrayCount' eligible Arc-enabled Servers."
 
-            Write-Information -MessageData 'Getting Bearer token.'
-            [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
+            Write-Information -MessageData 'About to start enrolling servers in benefits...'
+            [System.Int32]$j = 1
+            foreach ($Machine in $MachinesArray) {
+                [System.String]$MachineName = $Machine.Name
 
-            foreach ($AzSubscription in $AzSubscriptionsArray) {
-                [System.String]$ThisAzSubscriptionName = $AzSubscription.Name
-                [System.String]$ThisAzSubscriptionID = $AzSubscription.Id
+                Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
+                $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
 
-                Write-Information -MessageData 'Setting context.'
-                Get-AzSubscription -SubscriptionId $ThisAzSubscriptionID | Set-AzContext | Out-Null
+                $ResponseArray.Add($Response) | Out-Null
 
-                Write-Information -MessageData "Working on Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName' and ID: '$ThisAzSubscriptionID'. Subscription: '$i' of: '$AzSubscriptionArrayCount' subscriptions."
-                #[System.Collections.ArrayList]$MachinesArray = @()
-                [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $ThisAzSubscriptionID
-
-                [System.Int32]$MachinesArrayCount = $MachinesArray.Count
-                if (1 -le $MachinesArrayCount) {
-                    Write-Information -MessageData "Found: '$MachinesArrayCount' Arc-enabled Servers."
-
-                    Write-Information -MessageData 'Looping through machines...'
-                    [System.Int32]$j = 1
-                    foreach ($Machine in $MachinesArray) {
-                        [System.String]$MachineName = $Machine.Name
-
-                        Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
-                        $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
-
-                        $ResponseArray.Add($Response) | Out-Null
-
-                        $j++
-                    }
-                }
-                else {
-                    Write-Information -MessageData 'Did not find any Arc-enabled servers in current subscription.'
-                }
-
-                $i++
+                $j++
             }
         }
         else {
-            Write-Warning -Message "Found no eligible Azure subscriptions attached to tenant: '$TenantID'."
+            Write-Information -MessageData 'Did not find any eligible Arc-enabled servers in tenant: '$TenantIDs'.'
         }
     }
     'AzSubscriptions' {
@@ -360,52 +385,28 @@ switch ($PSCmdlet.ParameterSetName) {
         }
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in Azure subscription(s): '$AzSubscriptionIDsString'."
 
-        Write-Information -MessageData 'Getting Bearer token.'
-        [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
+        Write-Information -MessageData 'Discovering machines...'
+        [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $AzSubscriptionIDs
 
-        Write-Information -MessageData 'Getting Azure subscriptions.'
-        [System.Collections.ArrayList]$AzSubscriptionsArray = @()
+        [System.Int32]$MachinesArrayCount = $MachinesArray.Count
+        if (1 -le $MachinesArrayCount) {
+            Write-Information -MessageData "Found: '$MachinesArrayCount' eligible Arc-enabled Servers."
 
-        $AzSubscriptionIDs | ForEach-Object -Process {
-            $AzSubscription = Get-AzSubscription -SubscriptionId $_
-            $AzSubscriptionsArray.Add($AzSubscription) | Out-Null
+            Write-Information -MessageData 'About to start enrolling servers in benefits...'
+            [System.Int32]$j = 1
+            foreach ($Machine in $MachinesArray) {
+                [System.String]$MachineName = $Machine.Name
+
+                Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
+                $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+
+                $ResponseArray.Add($Response) | Out-Null
+
+                $j++
+            }
         }
-
-        [System.Int32]$i = 1
-        [System.Int32]$AzSubscriptionArrayCount = $AzSubscriptionsArray.Count
-        foreach ($AzSubscription in $AzSubscriptionsArray) {
-            [System.String]$ThisAzSubscriptionName = $AzSubscription.Name
-            [System.String]$ThisAzSubscriptionID = $AzSubscription.Id
-
-            Write-Information -MessageData 'Setting context.'
-            Get-AzSubscription -SubscriptionId $ThisAzSubscriptionID | Set-AzContext | Out-Null
-
-            Write-Information -MessageData "Working on Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName' and ID: '$ThisAzSubscriptionID'. Subscription: '$i' of: '$AzSubscriptionArrayCount' subscriptions."
-            #[System.Collections.ArrayList]$MachinesArray = @()
-            [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $ThisAzSubscriptionID
-
-            [System.Int32]$MachinesArrayCount = $MachinesArray.Count
-            if (1 -le $MachinesArrayCount) {
-                Write-Information -MessageData "Found: '$MachinesArrayCount' Arc-enabled Servers."
-
-                Write-Information -MessageData 'Looping through machines...'
-                [System.Int32]$j = 1
-                foreach ($Machine in $MachinesArray) {
-                    [System.String]$MachineName = $Machine.Name
-
-                    Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
-                    $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
-
-                    $ResponseArray.Add($Response) | Out-Null
-
-                    $j++
-                }
-            }
-            else {
-                Write-Information -MessageData 'Did not find any Arc-enabled servers in current subscription.'
-            }
-
-            $i++
+        else {
+            Write-Information -MessageData 'Did not find any eligible Arc-enabled servers in subscriptions: '$AzSubscriptionIDsString'.'
         }
     }
     'ResourceGroupOrMachines' {
@@ -416,9 +417,9 @@ switch ($PSCmdlet.ParameterSetName) {
         [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
 
         if ($PSBoundParameters.ContainsKey('ResourceGroupName') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
-            Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupName'."
+            Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
             #[System.Collections.ArrayList]$MachinesArray = @()
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupName
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupNames
         }
         elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupName'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
             if (1 -lt $MachineNames.Count) {
@@ -439,10 +440,10 @@ switch ($PSCmdlet.ParameterSetName) {
                 [System.String]$MachineNamesString = $MachineNames
             }
 
-            Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupName'.'
+            Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
             Write-Information -MessageData 'Machine names: '$MachineNamesString'."
             #[System.Collections.ArrayList]$MachinesArray = @()
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupName -MachineNames $MachineNames
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupName $ResourceGroupNames -MachineNames $MachineNames
         }
     }
     default {
