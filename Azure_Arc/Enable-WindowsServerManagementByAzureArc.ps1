@@ -441,6 +441,9 @@ switch ($PSCmdlet.ParameterSetName) {
         }
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in Azure subscription(s): '$AzSubscriptionIDsString'."
 
+        Write-Information -MessageData 'Getting Bearer token.'
+        [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
+
         Write-Information -MessageData 'Discovering machines...'
         [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $AzSubscriptionIDs
 
