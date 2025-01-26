@@ -42,6 +42,9 @@
     Supply (a) machine name(s). Sets the script to run at a subscription scope, but looks for matching machine names in the subscription.
     When paired with the 'ResourceGroupNames' parameter, only machines discovered in the supplied resource groups will be enrolled.
 
+    .PARAMETER ExcludeMachineResourceIDs
+    Supply Resource ID(s) of (a) machine(s) to exclude them from being enrolled.
+
     .PARAMETER TakeFirst
     Sets discovery to break up the discovery loop into smaller batches.
 
@@ -105,12 +108,18 @@
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
     PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2'
 
+    .EXAMPLE
+    PS> Connect-AzAccount
+    PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2' -ExcludeMachineResourceIDs '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/Prod-RG-3TierApp-01/providers/Microsoft.HybridCompute/machines/Server3'
+
     .OUTPUTS
     System.Collections.ArrayList
 #>
 #Requires -Version 7.0
 #Requires -Modules Az.Accounts, Az.Resources
 [CmdletBinding(
+    DefaultParameterSetName = '__AllParameterSets',
     SupportsShouldProcess,
     ConfirmImpact = 'Low'
 )]
@@ -132,7 +141,7 @@ param(
     )]
     [ValidateScript(
         {
-            [guid]::TryParse($_, $([ref][guid]::Empty))
+            [System.Guid]::TryParse($_, $([ref][System.Guid]::Empty))
         }
     )]
     [System.String[]]$AzSubscriptionIDs,
@@ -146,6 +155,10 @@ param(
         ParameterSetName = 'ResourceGroupOrMachines'
     )]
     [System.String[]]$MachineNames,
+    [Parameter(
+        Mandatory = $false
+    )]
+    [System.String[]]$ExcludeMachineResourceIDs,
     [Parameter(
         Mandatory = $false
     )]
@@ -197,23 +210,24 @@ function CreateBearerTokenHeaderTable {
 
 function DiscoverMachines {
     [CmdletBinding(
+        DefaultParameterSetName = '__AllParameterSets',
         SupportsShouldProcess,
         ConfirmImpact = 'Low'
     )]
     [OutputType([System.Array])]
     param (
         [Parameter(
-            Mandatory = $false,
+            Mandatory = $true,
             ParameterSetName = 'TenantIDs'
         )]
         [System.String[]]$TenantIDs,
         [Parameter(
-            Mandatory = $false,
+            Mandatory = $true,
             ParameterSetName = 'ManagementGroupIDs'
         )]
         [System.String[]]$ManagementGroupIDs,
         [Parameter(
-            Mandatory = $false,
+            Mandatory = $true,
             ParameterSetName = 'AzSubscriptions'
         )]
         [System.String[]]$AzSubscriptionIDs,
@@ -230,9 +244,6 @@ function DiscoverMachines {
         [Parameter(
             Mandatory = $false
         )]
-        [Parameter(
-            Mandatory = $false
-        )]
         [ValidateRange(1, 1000)]
         [System.Int32]$TakeFirst = 250
     )
@@ -244,7 +255,8 @@ function DiscoverMachines {
 
         switch ($PSCmdlet.ParameterSetName) {
             default {
-                ## TO DO: 01.23.2025 - Add unfiltered discovery
+                Write-Information -MessageData 'Getting all Arc-enabled Windows Servers not already enrolled.'
+                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true")
             }
             'TenantIDs' {
                 if (1 -lt $TenantIDs.Count) {
@@ -408,7 +420,7 @@ function EnrollMachine {
     try {
         $ErrorActionPreference = 'Stop'
 
-        if ($PSCmdlet.ShouldProcess($AzVMsNoAMAReportFilePath)) {
+        if ($PSCmdlet.ShouldProcess($MachineName)) {
             $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             [PSCustomObject]$ResponseTable = @{
                 MachineName       = $MachineName;
@@ -439,6 +451,12 @@ Write-Information -MessageData 'Getting Bearer token.'
 [System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
 
 switch ($PSCmdlet.ParameterSetName) {
+    '__AllParameterSets' {
+        Write-Information -MessageData 'Will attempt to enroll all Arc-enabled Servers.'
+
+        Write-Information -MessageData 'Discovering machines...'
+        [System.Array]$MachinesArray = DiscoverMachines -TakeFirst $TakeFirst
+    }
     'TenantIDs' {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers across all Azure subscriptions in Entra ID tenant: '$TenantIDs'."
 
@@ -500,9 +518,64 @@ switch ($PSCmdlet.ParameterSetName) {
             [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
     }
-    default {
-        Write-Warning -Message 'Please supply at least one parameter and try again.'
-        throw
+}
+
+if ($PSBoundParameters.ContainsKey('ExcludeMachineResourceIDs')) {
+    Write-Information -MessageData 'Validating Resource ID format.'
+    $ExcludeMachineResourceIDs | ForEach-Object -Process {
+        [System.Collections.ArrayList]$RIDArray = @()
+        [System.Collections.ArrayList]$RIDArray = $_.Split('/')
+        [System.Int32]$RIDElementCount = $RIDArray.Count
+        [System.String]$Subscriptions = $RIDArray[1]
+        [System.String]$SubscriptionID = $RIDArray[2]
+        [System.String]$ResourceGroups = $RIDArray[3]
+        [System.String]$Providers = $RIDArray[5]
+        [System.String]$ResourceProvider = $RIDArray[6]
+        [System.String]$Machines = $RIDArray[7]
+
+        if (9 -ne $RIDElementCount) {
+            Write-Error -Message "The supplied Resource ID: '$_' should have nine elements when split and does not."
+            throw
+        }
+
+        if ('subscriptions' -ne $Subscriptions) {
+            Write-Error -Message 'Subscription format validation failed.'
+            throw
+        }
+
+        if (!([System.Guid]::TryParse($SubscriptionID, $([ref][System.Guid]::Empty)))) {
+            Write-Error -Message 'Subscription ID format validation failed.'
+            throw
+        }
+
+        if ('resourceGroups' -ne $ResourceGroups) {
+            Write-Error -Message 'Resource Groups format validation failed.'
+            throw
+        }
+
+        if ('providers' -ne $Providers) {
+            Write-Error -Message 'Providers format validation failed.'
+            throw
+        }
+
+        if ('Microsoft.HybridCompute' -ne $ResourceProvider) {
+            Write-Error -Message "The supplied Resource Provider: '$ResourceProvider' should be 'Microsoft.HybridCompute'."
+            throw
+        }
+
+        if ('machines' -ne $Machines) {
+            Write-Error -Message 'Machines format validation failed.'
+            throw
+        }
+    }
+
+    Write-Information -MessageData 'Will exclude the following Resource IDs from enrolling:'
+    $ExcludeMachineResourceIDs | ForEach-Object -Process {
+        Write-Information -MessageData $_
+    }
+
+    $MachinesArray = $MachinesArray | Where-Object -FilterScript {
+        $_.ResourceID -notin $ExcludeMachineResourceIDs
     }
 }
 
