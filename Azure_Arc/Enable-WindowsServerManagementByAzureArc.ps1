@@ -27,22 +27,45 @@
     ===========================================================================
 
     .PARAMETER TenantIDs
-    Supply the ID of an Entra ID tenant. Sets the script to run at an Azure environment scope across all subscriptions attached to the tenant.
+    Supply ID(s) of an Entra ID tenant. Sets the script to run at an Azure environment scope across all subscriptions attached to the tenant.
+
+    .PARAMETER ManagementGroupIDs
+    Supply ID(s) of Management Groups in your organization. Sets the script to search for matching subscriptions under the supplied Management Group IDs.
 
     .PARAMETER AzSubscriptionIDs
-    Supply an Azure subscription ID. Sets the script to run at an Azure subscription scope.
+    Supply Azure subscription ID(s). Sets the script to run at an Azure subscription scope.
 
     .PARAMETER ResourceGroupNames
-    Supply the name of a resource group in the current Azure contxt. Sets the script to run at an Azure resource group scope.
+    Supply the name of resource group(s) in the current Azure contxt. Sets the script to run at an Azure resource group scope.
 
     .PARAMETER MachineNames
-    Supply a string array of machine names. Sets the script to run at a subscription scope, but across resource groups within the subscription.
+    Supply (a) machine name(s). Sets the script to run at a subscription scope, but looks for matching machine names in the subscription.
+    When paired with the 'ResourceGroupNames' parameter, only machines discovered in the supplied resource groups will be enrolled.
+
+    .PARAMETER TakeFirst
+    Sets discovery to break up the discovery loop into smaller batches.
+
+    .EXAMPLE
+    PS> Connect-AzAccount
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+
+    .EXAMPLE
+    PS> Connect-AzAccount -TenantID '00000000-0000-0000-0000-000000000000'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -WhatIf
 
     .EXAMPLE
     PS> [System.String]$TenantID1 = '00000000-0000-0000-0000-000000000000'
     PS> [System.String]$TenantID2 = '11111111-1111-1111-1111-111111111111'
     PS> Connect-AzAccount -TenantID $TenantID1
     PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantID1, $TenantID2
+
+    .EXAMPLE
+    PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Production'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+
+    .EXAMPLE
+    PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Development','MyOrg_Production'
+    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
 
     .EXAMPLE
     PS> Connect-AzAccount
@@ -122,7 +145,12 @@ param(
         Mandatory = $false,
         ParameterSetName = 'ResourceGroupOrMachines'
     )]
-    [System.String[]]$MachineNames
+    [System.String[]]$MachineNames,
+    [Parameter(
+        Mandatory = $false
+    )]
+    [ValidateRange(1, 1000)]
+    [System.Int32]$TakeFirst = 250
 )
 $InformationPreference = 'Continue'
 
@@ -198,7 +226,15 @@ function DiscoverMachines {
             Mandatory = $false,
             ParameterSetName = 'ResourceGroupOrMachines'
         )]
-        [System.String[]]$MachineNames
+        [System.String[]]$MachineNames,
+        [Parameter(
+            Mandatory = $false
+        )]
+        [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateRange(1, 1000)]
+        [System.Int32]$TakeFirst = 250
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
@@ -296,11 +332,26 @@ function DiscoverMachines {
         }
 
         [System.Collections.ArrayList]$MachinesArray = @()
+        [System.Int32]$Skip = 0
         try {
             $ErrorActionPreference = 'Stop'
-            Search-AzGraph -Query $ResourceGraphQuery | Sort-Object -Property Name | ForEach-Object -Process {
-                $MachinesArray.Add($_) | Out-Null
-            }
+            do {
+                Write-Verbose -Message "Taking first: '$TakeFirst'. Skipping: '$Skip'."
+                if (0 -eq $Skip) {
+                    $SearchAzGraph = Search-AzGraph -Query $ResourceGraphQuery -First $TakeFirst
+                }
+                else {
+                    $SearchAzGraph = Search-AzGraph -Query $ResourceGraphQuery -First $TakeFirst -Skip $Skip
+                }
+                [System.Int32]$SearchAzGraphCount = $SearchAzGraph.Count
+                Write-Verbose -Message "Search result count: '$SearchAzGraphCount'."
+                $SearchAzGraph | Sort-Object -Property Name | ForEach-Object -Process {
+                    $MachinesArray.Add($_) | Out-Null
+                }
+                [System.Int32]$Skip = $Skip + $TakeFirst
+            } until (
+                0 -eq $SearchAzGraph.Count
+            )
         }
         catch {
             $_
@@ -392,7 +443,7 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers across all Azure subscriptions in Entra ID tenant: '$TenantIDs'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -TenantIDs $TenantIDs
+        [System.Array]$MachinesArray = DiscoverMachines -TenantIDs $TenantIDs -TakeFirst $TakeFirst
     }
     'ManagementGroupIDs' {
         if (1 -lt $ManagementGroupIDs.Count) {
@@ -404,7 +455,7 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers under Management Groups(s): '$ManagementGroupIDsString'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -ManagementGroupIDs $ManagementGroupIDs
+        [System.Array]$MachinesArray = DiscoverMachines -ManagementGroupIDs $ManagementGroupIDs -TakeFirst $TakeFirst
     }
     'AzSubscriptions' {
         if (1 -lt $AzSubscriptionIDs.Count) {
@@ -416,7 +467,7 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in Azure subscription(s): '$AzSubscriptionIDsString'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $AzSubscriptionIDs
+        [System.Array]$MachinesArray = DiscoverMachines -AzSubscriptionIDs $AzSubscriptionIDs -TakeFirst $TakeFirst
     }
     'ResourceGroupOrMachines' {
         [System.String]$ThisAzSubscriptionName = $GetAzContext.Subscription.Name
@@ -424,7 +475,7 @@ switch ($PSCmdlet.ParameterSetName) {
 
         if ($PSBoundParameters.ContainsKey('ResourceGroupNames') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
             Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -TakeFirst $TakeFirst
         }
         elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupNames'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
             if (1 -lt $MachineNames.Count) {
@@ -434,7 +485,7 @@ switch ($PSCmdlet.ParameterSetName) {
                 [System.String]$MachineNamesString = $MachineNames
             }
             Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers across resource groups in the current Azure subscription: '$MachineNamesString'."
-            [System.Array]$MachinesArray = DiscoverMachines -MachineNames $MachineNames
+            [System.Array]$MachinesArray = DiscoverMachines -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
         else {
             if (1 -lt $MachineNames.Count) {
@@ -446,7 +497,7 @@ switch ($PSCmdlet.ParameterSetName) {
 
             Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
             Write-Information -MessageData 'Machine names: '$MachineNamesString'."
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames
+            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
     }
     default {
