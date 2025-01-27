@@ -162,11 +162,26 @@ param(
     [Parameter(
         Mandatory = $false
     )]
+    [ValidateLength(2, 260)]
+    [System.String]$ReportDirectoryPath,
+    [Parameter(
+        Mandatory = $false
+    )]
+    [switch]$ReportOnly,
+    [Parameter(
+        Mandatory = $false
+    )]
     [ValidateRange(1, 1000)]
     [System.Int32]$TakeFirst = 250
 )
 $InformationPreference = 'Continue'
+[System.String]$ScriptName = $MyInvocation.MyCommand.Name
+[System.String]$ScriptNameNoExt = $ScriptName.Split('.')[0]
+[System.String]$Now = Get-Date -Format FileDateTimeUniversal
 
+Write-Information -MessageData "Starting: '$ScriptName'."
+
+### BEGIN: Connection Check ###
 Write-Information -MessageData 'Getting current Azure context...'
 $GetAzContext = Get-AzContext
 
@@ -177,6 +192,45 @@ else {
     Write-Error -Message 'Not connected to Azure. Please connect first and try again.'
     throw
 }
+### END: Connection Check ###
+### BEGIN: Report Setup ###
+if ($PSBoundParameters.ContainsKey('ReportDirectoryPath')) {
+    Write-Information -MessageData 'A report directory was specified.'
+
+    Write-Information -MessageData 'Normalizing provided parameter value.'
+    try {
+        $ErrorActionPreference = 'Stop'
+        $ReportDirectoryPathNET = [System.IO.DirectoryInfo]::new($ReportDirectoryPath)
+
+        [System.String]$ReportDirectoryPathNormalized = [System.String]::Concat($ReportDirectoryPathNET.Parent, $ReportDirectoryPathNET.BaseName)
+    }
+    catch {
+        throw
+    }
+
+    try {
+        $ErrorActionPreference = 'Stop'
+        if (Test-Path -Path $ReportDirectoryPathNormalized -IsValid) {
+            Write-Information -MessageData 'Report directory synatx is valid.'
+
+            if (Test-Path -Path $ReportDirectoryPathNormalized -PathType 'Container') {
+                Write-Information -MessageData "Report directory path: '$ReportDirectoryPathNormalized' is valid."
+            }
+            else {
+                Write-Warning -Message "Report directory path: '$ReportDirectoryPathNormalized' is not a directory."
+                throw
+            }
+        }
+        else {
+            Write-Warning -Message "Report directory syntax: '$ReportDirectoryPathNormalized' is invalid."
+            throw
+        }
+    }
+    catch {
+        $_
+    }
+}
+### END: Report Setup ###
 
 function CreateBearerTokenHeaderTable {
     [CmdletBinding(
@@ -252,11 +306,10 @@ function DiscoverMachines {
 
     try {
         $ErrorActionPreference = 'Stop'
-
+        [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true"
         switch ($PSCmdlet.ParameterSetName) {
             default {
                 Write-Information -MessageData 'Getting all Arc-enabled Windows Servers not already enrolled.'
-                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true")
             }
             'TenantIDs' {
                 if (1 -lt $TenantIDs.Count) {
@@ -268,7 +321,7 @@ function DiscoverMachines {
 
                 Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled across all subscriptions in tenants: $TenantIDsString."
                 [System.String]$TenantIDsQueryArrayString = [System.String]::Concat('(', $TenantIDsString , ')')
-                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and tenantId in", $TenantIDsQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' and tenantId in', $TenantIDsQueryArrayString)
             }
             'ManagementGroupIDs' {
                 if (1 -lt $ManagementGroupIDs.Count) {
@@ -292,7 +345,7 @@ function DiscoverMachines {
 
                 Write-Information -MessageData "Getting all Arc-enabled Windows Servers not already enrolled in subscriptions: '$AzSubscriptionIDsString'."
                 [System.String]$AzSubscriptionIDsQueryArrayString = [System.String]::Concat('(', $AzSubscriptionIDsString , ')')
-                [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType =='windows' and properties.status =='Connected' and subscriptionId in ", $AzSubscriptionIDsQueryArrayString, 'and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' and subscriptionId in ', $AzSubscriptionIDsQueryArrayString)
             }
             'ResourceGroupOrMachines' {
                 Write-Information -MessageData 'Getting context.'
@@ -308,7 +361,7 @@ function DiscoverMachines {
                         [System.String]$ResourceGroupNamesString = [System.String]::Concat('''', $ResourceGroupNames, '''')
                     }
                     [System.String]$ResourceGroupNamesQueryArrayString = [System.String]::Concat('(', $ResourceGroupNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType =='windows' and properties.status =='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup In ", $ResourceGroupNamesQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, " and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup In ", $ResourceGroupNamesQueryArrayString)
                 }
                 elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupNames'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
                     Write-Information -MessageData "Getting Arc-enabled Windows Servers not already enrolled across resource groups in subscription: '$AzSubscriptionName'."
@@ -319,7 +372,7 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType =='windows' and properties.status =='Connected' and subscriptionId == '", $AzSubscriptionID, "' and name in ", $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, " and subscriptionId == '", $AzSubscriptionID, "' and name In ", $MachineNameQueryArrayString)
                 }
                 else {
                     Write-Information -MessageData "Getting specific Arc-enabled Windows Servers not already enrolled in resource groups: '$ResourceGroupNames' in subscription: '$AzSubscriptionName'."
@@ -338,11 +391,11 @@ function DiscoverMachines {
                         [System.String]$MachineNamesString = [System.String]::Concat('''', $MachineNames, '''')
                     }
                     [System.String]$MachineNameQueryArrayString = [System.String]::Concat('(', $MachineNamesString , ')')
-                    [System.String]$ResourceGraphQuery = [System.String]::Concat("resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType =='windows' and properties.status =='Connected' and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString, ' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true')
+                    [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, " and subscriptionId == '", $AzSubscriptionID, "' and resourceGroup in ", $ResourceGroupNamesQueryArrayString, ' and name in ', $MachineNameQueryArrayString)
                 }
             }
         }
-
+        [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' | extend operatingSystem = properties.osSku')
         [System.Collections.ArrayList]$MachinesArray = @()
         [System.Int32]$Skip = 0
         try {
@@ -385,7 +438,7 @@ function EnrollMachine {
         SupportsShouldProcess,
         ConfirmImpact = 'Low'
     )]
-    [OutputType([PSCustomObject])]
+    [OutputType([System.Collections.Hashtable])]
     param (
         [PSObject]$Machine,
         [System.Collections.Hashtable]$BearerTokenHeaderTable,
@@ -417,31 +470,41 @@ function EnrollMachine {
 
     $JSON = $DataTable | ConvertTo-Json;
     Write-Information -MessageData "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
+    [System.Collections.Hashtable]$ResponseTable = @{
+        MachineName = $MachineName;
+        ResourceID  = $Machine.ResourceID
+    }
     try {
-        $ErrorActionPreference = 'Stop'
-
+        $ErrorActionPreference = 'SilentlyContinue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
             $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
-            [PSCustomObject]$ResponseTable = @{
-                MachineName       = $MachineName;
-                ResourceID        = $Machine.ResourceID
-                ProvisioningState = $Response.Properties.provisioningState;
-                SoftwareAssurance = $Response.Properties.softwareAssurance;
-            }
+            $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
+            $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
+            $ResponseTable.Add('Result', 'Success')
+            $ResponseTable.Add('ErrorMessage', '')
+            Write-Information -MessageData "Machine: '$MachineName'. Result: 'Success'. Continuing."
         }
         else {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'"
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'. Continuing."
+            $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
+            $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
+            $ResponseTable.Add('Result', 'N/A - WhatIf')
+            $ResponseTable.Add('ErrorMessage', 'N/A - WhatIf')
         }
-
-        $ResponseTable
     }
     catch {
-        $_
-        throw
+        Write-Warning -Message "Machine: '$MachineName'. Result: 'Error'. Continuing."
+        $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
+        $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
+        $ResponseTable.Add('Result', 'Error')
+        $ResponseTable.Add('ErrorMessage', ($_.Errordetails.Message | ConvertFrom-Json).Error.Message)
     }
+
+    $ResponseTable
 }
 
 # Create an array list to collect responses for output at the end.
@@ -589,7 +652,13 @@ if (1 -le $MachinesArrayCount) {
         [System.String]$MachineName = $Machine.Name
 
         Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
-        $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+
+        if ($PSBoundParameters.ContainsKey('ReportOnly')) {
+            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -WhatIf
+        }
+        else {
+            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+        }
 
         $ResponseArray.Add($Response) | Out-Null
 
@@ -613,12 +682,27 @@ else {
     }
 }
 
+### BEGIN: REPORT ###
 if (0 -lt $ResponseArray.Count) {
     Write-Information -MessageData 'Results: '
     $ResponseArray | Select-Object -Property 'MachineName', 'ProvisioningState', 'ResourceID', 'SoftwareAssurance' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
+    ### Test Report Directory validity and normalize provided parameter value
+    if ($PSBoundParameters.ContainsKey('ReportDirectoryPath')) {
+        [System.String]$ReportFileName = [System.String]::Concat($ScriptNameNoExt, '_', 'VMs', '_AMA-Healthy_', $Now, '.csv')
+        [System.String]$ReportFilePath = [System.String]::Concat($ReportDirectoryPathNormalized, '\', $ReportFileName)
+        if ($PSCmdlet.ShouldProcess($ReportFilePath)) {
+            Write-Information -MessageData "Exporting CSV report to: '$ReportFilePath'."
+            $ResponseArray | Export-Csv -LiteralPath $ReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation
+        }
+        else {
+            Write-Information -MessageData "Would export CSV report to: '$ReportFilePath'."
+            $ResponseArray | Export-Csv -LiteralPath $ReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation -WhatIf
+        }
+    }
 }
 else {
     Write-Information -MessageData 'No results to output.'
 }
-
+### END: REPORT ###
+### END
 Write-Information -MessageData 'Exiting.'
