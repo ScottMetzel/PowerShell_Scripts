@@ -11,7 +11,7 @@ Tools in this directory are used with Azure Arc. Please refer to the list below 
    1. [Preqreuisites](#prerequisites)
    2. [How to Execute](#HowToExecute)
    3. [Examples](#Examples)
-
+   4. [Outputs](#Outputs)
 
 <a name="EnableWinSrvManagement"></a>
 ## Enable Windows Server Management via Azure Arc
@@ -175,3 +175,11 @@ PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/Prod-RG-Arc-01/providers/Microsoft.HybridCompute/machines/Server3'
 ```
 Running the tool this way will attempt to enroll all servers it discovers in a specific resource group, but excludes a server using its Resource ID.
+
+<a name="Outputs"></a>
+### Outputs
+#### [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
+When eligible servers are discovered, it outputs an array of hashtables.
+
+#### [CSV](https://learn.microsoft.com/en-us/dotnet/api/system.windows.dataformats.commaseparatedvalue?view=windowsdesktop-9.0)
+When the 'ReportDirectoryPath' parameter is specified, the tool outputs a report in CSV format. The CSV uses UTF8 formatting.
