@@ -7,7 +7,10 @@ date: 01/08/2025
 Tools in this directory are used with Azure Arc. Please refer to the list below to read more about each one.
 
 # Tools for Azure Arc
-1. [Enable Windows Server Management via Azure Arc](#enable-windows-server-management-via-azure-arc)
+1. [Enable Windows Server Management via Azure Arc](#EnableWinSrvManagement)
+   1. [Preqreuisites](#prerequisites)
+   2. [How to Execute](#HowToExecute)
+   3. [Examples](#Examples)
 
 
 <a name="EnableWinSrvManagement"></a>
@@ -25,6 +28,7 @@ It can enroll Arc-enabled Servers in Windows Server Management at all scopes, wh
 
 Despite all this fanciness, it doesn't take much to run.
 
+<a name="prerequisites"></a>
 ### Prerequisites
 - Your Work or School Account must be assigned the [*Azure Connected Machine Resource Administrator*](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator) role.
 - You must be connected to Azure.
@@ -35,11 +39,13 @@ Despite all this fanciness, it doesn't take much to run.
 - The 'Az.Accounts' and 'Az.Resources' PowerShell modules must be installed.
   - Azure Cloud Shell already has these modules installed, and it keeps them up to date!
 
+<a name="HowToExecute"></a>
 ### How to execute
 I recommend downloading this script, and then uploading it to a CloudShell session. Once uploaded, the script can be executed using the examples below, which assume you're not connected to Azure (again, CloudShell automatically connects your account to Azure).
 
 This will work in a local PowerShell 7 session as well, but CloudShell offloads maintenance of modules and has connectivity to Azure, too.
 
+<a name="Examples"></a>
 ### Examples
 #### Example 1 - Unfiltered
 ```
@@ -116,7 +122,6 @@ Running the tool this way will attempt to enroll all servers it discovers which 
 
 #### Example 11 - Filtering by Resource Group
 ```
-# Multiple resource groups
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02'
@@ -125,7 +130,6 @@ Running the tool this way will attempt to enroll all servers it discovers which 
 
 #### Example 12 - Filtering by Resource Groups and Server Names
 ```
-# Multiple resource groups
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1'
@@ -134,7 +138,6 @@ Running the tool this way will attempt to enroll specific servers it discovers w
 
 #### Example 13 - Filtering by Resource Groups and Server Names
 ```
-# Multiple resource groups
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
@@ -143,7 +146,6 @@ Running the tool this way will attempt to enroll specific servers it discovers w
 
 #### Example 14 - Filtering by Resource Groups and Server Names
 ```
-# Multiple resource groups
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
@@ -152,7 +154,6 @@ Running the tool this way will attempt to enroll specific servers it discovers w
 
 #### Example 15 - Filtering by Resource Group and Server Names
 ```
-# Multiple resource groups
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
