@@ -12,7 +12,7 @@ Tools in this directory are used with Azure Arc. Please refer to the list below 
 
 <a name="EnableWinSrvManagement"></a>
 ## Enable Windows Server Management via Azure Arc
-This tool provides a scalable solution for enrolling in <a name="https://learn.microsoft.com/en-us/azure/azure-arc/servers/windows-server-management-overview?tabs=portal">Windows Server Management by Azure Arc</a>. The easiest way to execute it is to download it, then upload to and execute via <a name="https://learn.microsoft.com/en-us/azure/cloud-shell/overview">Azure Cloud Shell</a>. Don't have a Cloud Shell? <a name="https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli">Read this to get started!</a>
+This tool provides a scalable solution for enrolling in [Windows Server Management by Azure Arc](https://learn.microsoft.com/en-us/azure/azure-arc/servers/windows-server-management-overview?tabs=portal). The easiest way to execute it is to download it, then upload to and execute via [Azure Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/overview). Don't have a Cloud Shell? [Read this to get started!](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli)
 
 It can enroll Arc-enabled Servers in Windows Server Management at all scopes, which means it can enroll all discovered Arc-enabled Servers:
  - using no filtering, which can span tenants.
@@ -26,7 +26,7 @@ It can enroll Arc-enabled Servers in Windows Server Management at all scopes, wh
 Despite all this fanciness, it doesn't take much to run.
 
 ### Prerequisites
-- Your Work or School Account must be assigned the <a name="https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator">*Azure Connected Machine Resource Administrator*</a> role.
+- Your Work or School Account must be assigned the [*Azure Connected Machine Resource Administrator*](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator) role.
 - You must be connected to Azure.
   - Azure Cloud Shell automatically signs you in!
   - (Optional) - If your account has access to multiple Entra ID tenants and Azure subscriptions, make sure to log in using a specific tenant ID or execute the script to run in the desired context. Please see the execution examples below.
