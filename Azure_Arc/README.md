@@ -8,10 +8,11 @@ Tools in this directory are used with Azure Arc. Please refer to the list below 
 
 # Tools for Azure Arc
 1. [Enable Windows Server Management via Azure Arc](#EnableWinSrvManagement)
-   1. [Preqreuisites](#prerequisites)
-   2. [How to Execute](#HowToExecute)
-   3. [Examples](#Examples)
-   4. [Outputs](#Outputs)
+   1. [Download](#Download)
+   2. [Preqreuisites](#Prerequisites)
+   3. [How to Execute](#HowToExecute)
+   4. [Examples](#Examples)
+   5. [Outputs](#Outputs)
 
 <a name="EnableWinSrvManagement"></a>
 ## Enable Windows Server Management via Azure Arc
@@ -28,7 +29,11 @@ It can enroll Arc-enabled Servers in Windows Server Management at all scopes, wh
 
 Despite all this fanciness, it doesn't take much to run.
 
-<a name="prerequisites"></a>
+<a name="Download"></a>
+### Download
+The script is available by its name in this directory: [Enable-WindowsServerManagementByAzureArc.ps1](https://github.com/ScottMetzel/PowerShell_Scripts/blob/main/Azure_Arc/Enable-WindowsServerManagementByAzureArc.ps1)
+
+<a name="Prerequisites"></a>
 ### Prerequisites
 - Your Work or School Account must be assigned the [*Azure Connected Machine Resource Administrator*](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator) role.
 - You must be connected to Azure.
