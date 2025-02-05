@@ -161,7 +161,7 @@ param(
         'Enable',
         'Disable'
     )]
-    [System.String]$SoftwareAssurance = 'Enable',
+    [System.String]$ManagementState = 'Enable',
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'TenantIDs'
