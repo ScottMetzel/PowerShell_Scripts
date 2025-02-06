@@ -161,7 +161,7 @@ param(
         'Enable',
         'Disable'
     )]
-    [System.String]$ManagementState = 'Enable',
+    [System.String]$EnrollmentState = 'Enable',
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'TenantIDs'
@@ -230,6 +230,17 @@ else {
     throw
 }
 ### END: Connection Check ###
+### BEGIN: ARM URL Capture ###
+Write-Information -MessageData "Getting ARM URL"
+[System.String]$AzureResourceManagerURL = $GetAzContext.Environment.ResourceManagerUrl
+if ($AzureResourceManagerURL -notin @($null, '')) {
+    Write-Information -MessageData "ARM URL is: '$AzureResourceManagerURL'."
+}
+else {
+    Write-Error -Message "ARM URL is empty or null and should start with 'https://management...'. Please connect to Azure and try again."
+    throw
+}
+### END: ARM URL Capture ###
 ### BEGIN: Report Setup ###
 if ($PSBoundParameters.ContainsKey('ReportDirectoryPath')) {
     Write-Information -MessageData 'A report directory was specified.'
@@ -308,6 +319,14 @@ function DiscoverMachines {
     [OutputType([System.Array])]
     param (
         [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateSet(
+            'Enable',
+            'Disable'
+        )]
+        [System.String]$EnrollmentState = 'Enable',
+        [Parameter(
             Mandatory = $true,
             ParameterSetName = 'TenantIDs'
         )]
@@ -342,7 +361,19 @@ function DiscoverMachines {
     Write-Information -MessageData "Running: '$ThisFunctionName'."
 
     $ErrorActionPreference = 'Stop'
-    [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true"
+    [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer"
+    switch ($EnrollmentState) {
+        'Enable' {
+            Write-Information -MessageData "Enrollment state is set to: '$EnrollmentState'."
+            [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' != true')
+        }
+        'Disable' {
+            Write-Information -MessageData "Enrollment state is set to: '$EnrollmentState'."
+            [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' == true')
+        }
+    }
+    Write-Verbose -Message "Resource Graph Query is now: '$ResourceGraphQuery'."
+
     switch ($PSCmdlet.ParameterSetName) {
         '__AllParameterSets' {
             Write-Information -MessageData 'Getting all Arc-enabled Windows Servers not already enrolled.'
@@ -471,7 +502,7 @@ function DiscoverMachines {
     $MachinesArray
 }
 
-function EnrollMachine {
+function SetEnrollmentState {
     [CmdletBinding(
         SupportsShouldProcess,
         ConfirmImpact = 'Low'
@@ -479,11 +510,29 @@ function EnrollMachine {
     [OutputType([System.Collections.Hashtable])]
     param (
         [PSObject]$Machine,
+        [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateSet(
+            'Enable',
+            'Disable'
+        )]
+        [System.String]$EnrollmentState = 'Enable',
         [System.Collections.Hashtable]$BearerTokenHeaderTable,
         [ValidatePattern(
-            '^(\d{ 4 })(-)(\d{ 2 })(-)(\d{ 2 })($ | (-preview)$)'
+            '^(\d{4})(-)(\d{2})(-)(\d{2})($|(-preview)$)'
         )]
-        [System.String]$ARMAPIVersion = '2024-07-10'
+        [System.String]$ARMAPIVersion = '2024-07-10',
+        [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateSet(
+            'https://management.azure.com/',
+            'https://management.usgovcloudapi.net/',
+            'https://management.microsoftazure.de/',
+            'https://management.chinacloudapi.cn/'
+        )]
+        [System.String]$ResourceManagerURL = 'https://management.azure.com/'
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
@@ -492,22 +541,39 @@ function EnrollMachine {
     [System.String]$MachineName = $Machine.Name
     [System.String]$MachineResourceGroupName = $ResourceIDArray[4]
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$URIString = [System.String]::Concat('https://management.azure.com/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$URIString = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
     [System.Uri]$URI = [System.Uri]::new( $URIString )
     [System.String]$AbsoluteURI = $URI.AbsoluteUri
     [System.String]$ContentType = 'application/json'
-    [System.Collections.Hashtable]$DataTable = @{
-        location   = $MachineLocation;
-        properties = @{
-            softwareAssurance = @{
-                softwareAssuranceCustomer = $true;
+    
+    switch ($EnrollmentState) {
+        'Enable' {
+            Write-Information -MessageData "Set to enable Windows Server Management by Azure Arc on Server: '$MachineName'."
+            [System.Collections.Hashtable]$DataTable = @{
+                location   = $MachineLocation;
+                properties = @{
+                    softwareAssurance = @{
+                        softwareAssuranceCustomer = $true;
+                    };
+                };
             };
-        };
-    };
+        }
+        'Disable' {
+            Write-Information -MessageData "Set to disable Windows Server Management by Azure Arc on Server: '$MachineName'."
+            [System.Collections.Hashtable]$DataTable = @{
+                location   = $MachineLocation;
+                properties = @{
+                    softwareAssurance = @{
+                        softwareAssuranceCustomer = $false;
+                    };
+                };
+            };
+        }
+    }
 
+    Write-Information -MessageData "Building response table..."
     $JSON = $DataTable | ConvertTo-Json;
-    Write-Information -MessageData "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
     if ($Machine.plan -in @($null, '')) {
         [System.String]$MachinePlan = 'null'
     }
@@ -541,6 +607,7 @@ function EnrollMachine {
     try {
         $ErrorActionPreference = 'SilentlyContinue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
+            Write-Information -MessageData "Creating call to Azure REST API."
             $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
@@ -552,8 +619,8 @@ function EnrollMachine {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'.'
-            Write-Information -MessageData 'Machine: '$MachineName'. Result: 'WhatIf'."
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
             $ResponseTable.Add('Result', 'N/A - WhatIf')
@@ -582,13 +649,13 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData 'Will attempt to enroll all Arc-enabled Servers.'
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -TakeFirst $TakeFirst
+        [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -TakeFirst $TakeFirst
     }
     'TenantIDs' {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers across all Azure subscriptions in Entra ID tenant: '$TenantIDs'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -TenantIDs $TenantIDs -TakeFirst $TakeFirst
+        [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -TenantIDs $TenantIDs -TakeFirst $TakeFirst
     }
     'ManagementGroupIDs' {
         if (1 -lt $ManagementGroupIDs.Count) {
@@ -600,7 +667,7 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers under Management Groups(s): '$ManagementGroupIDsString'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -ManagementGroupIDs $ManagementGroupIDs -TakeFirst $TakeFirst
+        [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -ManagementGroupIDs $ManagementGroupIDs -TakeFirst $TakeFirst
     }
     'Subscriptions' {
         if (1 -lt $SubscriptionIDs.Count) {
@@ -612,7 +679,7 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in Azure subscription(s): '$SubscriptionIDsString'."
 
         Write-Information -MessageData 'Discovering machines...'
-        [System.Array]$MachinesArray = DiscoverMachines -SubscriptionIDs $SubscriptionIDs -TakeFirst $TakeFirst
+        [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -SubscriptionIDs $SubscriptionIDs -TakeFirst $TakeFirst
     }
     'ResourceGroupOrMachines' {
         [System.String]$ThisAzSubscriptionName = $GetAzContext.Subscription.Name
@@ -620,7 +687,7 @@ switch ($PSCmdlet.ParameterSetName) {
 
         if ($PSBoundParameters.ContainsKey('ResourceGroupNames') -and (!($PSBoundParameters.ContainsKey('MachineNames')))) {
             Write-Information -MessageData "Will attempt to enroll all Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -TakeFirst $TakeFirst
+            [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -ResourceGroupNames $ResourceGroupNames -TakeFirst $TakeFirst
         }
         elseif ((!($PSBoundParameters.ContainsKey('ResourceGroupNames'))) -and $PSBoundParameters.ContainsKey('MachineNames')) {
             if (1 -lt $MachineNames.Count) {
@@ -630,7 +697,7 @@ switch ($PSCmdlet.ParameterSetName) {
                 [System.String]$MachineNamesString = $MachineNames
             }
             Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers across resource groups in the current Azure subscription: '$MachineNamesString'."
-            [System.Array]$MachinesArray = DiscoverMachines -MachineNames $MachineNames -TakeFirst $TakeFirst
+            [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
         else {
             if (1 -lt $MachineNames.Count) {
@@ -642,7 +709,7 @@ switch ($PSCmdlet.ParameterSetName) {
 
             Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
             Write-Information -MessageData 'Machine names: '$MachineNamesString'."
-            [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
+            [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
     }
 }
@@ -718,10 +785,10 @@ if (1 -le $MachinesArrayCount) {
         Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
 
         if ($PSBoundParameters.ContainsKey('ReportOnly')) {
-            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -WhatIf
+            $Response = SetEnrollmentState -EnrollmentState $EnrollmentState -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -WhatIf
         }
         else {
-            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+            $Response = SetEnrollmentState -EnrollmentState $EnrollmentState -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
         }
 
         $ResponseArray.Add($Response) | Out-Null

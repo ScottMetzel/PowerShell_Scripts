@@ -222,6 +222,17 @@ else {
     throw
 }
 ### END: Connection Check ###
+### BEGIN: ARM URL Capture ###
+Write-Information -MessageData "Getting ARM URL"
+[System.String]$AzureResourceManagerURL = $GetAzContext.Environment.ResourceManagerUrl
+if ($AzureResourceManagerURL -notin @($null, '')) {
+    Write-Information -MessageData "ARM URL is: '$AzureResourceManagerURL'."
+}
+else {
+    Write-Error -Message "ARM URL is empty or null and should start with 'https://management...'. Please connect to Azure and try again."
+    throw
+}
+### END: ARM URL Capture ###
 ### BEGIN: Report Setup ###
 if ($PSBoundParameters.ContainsKey('ReportDirectoryPath')) {
     Write-Information -MessageData 'A report directory was specified.'
@@ -473,9 +484,19 @@ function EnrollMachine {
         [PSObject]$Machine,
         [System.Collections.Hashtable]$BearerTokenHeaderTable,
         [ValidatePattern(
-            '^(\d{ 4 })(-)(\d{ 2 })(-)(\d{ 2 })($ | (-preview)$)'
+            '^(\d{4})(-)(\d{2})(-)(\d{2})($|(-preview)$)'
         )]
-        [System.String]$ARMAPIVersion = '2024-07-10'
+        [System.String]$ARMAPIVersion = '2024-07-10',
+        [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateSet(
+            'https://management.azure.com',
+            'https://management.usgovcloudapi.net',
+            'https://management.microsoftazure.de',
+            'https://management.chinacloudapi.cn'
+        )]
+        [System.String]$ResourceManagerURL = 'https://management.azure.com'
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
@@ -484,7 +505,7 @@ function EnrollMachine {
     [System.String]$MachineName = $Machine.Name
     [System.String]$MachineResourceGroupName = $ResourceIDArray[4]
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$URIString = [System.String]::Concat('https://management.azure.com/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$URIString = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
     [System.Uri]$URI = [System.Uri]::new( $URIString )
     [System.String]$AbsoluteURI = $URI.AbsoluteUri
@@ -544,8 +565,8 @@ function EnrollMachine {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'.'
-            Write-Information -MessageData 'Machine: '$MachineName'. Result: 'WhatIf'."
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
             $ResponseTable.Add('Result', 'N/A - WhatIf')
