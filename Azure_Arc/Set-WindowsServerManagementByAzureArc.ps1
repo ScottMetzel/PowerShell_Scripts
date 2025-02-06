@@ -57,90 +57,90 @@
     .EXAMPLE
     # Unfiltered
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1
 
     .EXAMPLE
     # Unfiltered with Reporting
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp'
 
     .EXAMPLE
     # Unfiltered with Reporting Only
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp' -ReportOnly
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp' -ReportOnly
     .EXAMPLE
     # Tenant filtering with WhatIf
     PS> Connect-AzAccount -TenantID '00000000-0000-0000-0000-000000000000'
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -WhatIf
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -WhatIf
 
     .EXAMPLE
     # Multiple specific Entra ID tenants
     PS> [System.String]$TenantID1 = '00000000-0000-0000-0000-000000000000'
     PS> [System.String]$TenantID2 = '11111111-1111-1111-1111-111111111111'
     PS> Connect-AzAccount -TenantID $TenantID1
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantID1, $TenantID2
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantID1, $TenantID2
 
     .EXAMPLE
     # Management Group filtering
     PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Production'
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1
 
     .EXAMPLE
     # Multiple Management Group IDs
     PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Development','MyOrg_Production'
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1
 
     .EXAMPLE
     # Subscription filtering
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000'
 
     .EXAMPLE
     # Multiple subscription IDs
     PS> Connect-AzAccount
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111'
 
     .EXAMPLE
     # Resource Group filtering
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01'
 
     .EXAMPLE
     # Multiple resource groups
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02'
 
     .EXAMPLE
     # Machine filtering with resource group filtering
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1'
 
     .EXAMPLE
     # Multiple machines in multiple resource groups
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
 
     .EXAMPLE
     # Multiple machines in a single resource group
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
 
     .EXAMPLE
     # Multiple machines, which can span resource groups
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2'
 
     .EXAMPLE
     # Exclude specific machine(s)
     PS> Connect-AzAccount
     PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
-    PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2' -ExcludeMachineResourceIDs '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/Prod-RG-3TierApp-01/providers/Microsoft.HybridCompute/machines/Server3'
+    PS> .\Set-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2' -ExcludeMachineResourceIDs '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/Prod-RG-3TierApp-01/providers/Microsoft.HybridCompute/machines/Server3'
 
     .OUTPUTS
     System.Collections.ArrayList
