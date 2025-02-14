@@ -223,7 +223,7 @@ else {
 }
 ### END: Connection Check ###
 ### BEGIN: ARM URL Capture ###
-Write-Information -MessageData "Getting ARM URL"
+Write-Information -MessageData 'Getting ARM URL'
 [System.String]$AzureResourceManagerURL = $GetAzContext.Environment.ResourceManagerUrl
 if ($AzureResourceManagerURL -notin @($null, '')) {
     Write-Information -MessageData "ARM URL is: '$AzureResourceManagerURL'."
@@ -284,8 +284,8 @@ function CreateBearerTokenHeaderTable {
     Write-Information -MessageData 'Creating bearer token object.'
     try {
         $ErrorActionPreference = 'Stop'
-        $profile = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile
-        $ProfileClient = [Microsoft.Azure.Commands.ResourceManager.Common.rmProfileClient]::new($profile)
+        $AzureRmProfileProvider = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile
+        $ProfileClient = [Microsoft.Azure.Commands.ResourceManager.Common.rmProfileClient]::new($AzureRmProfileProvider)
         $Token = $profileClient.AcquireAccessToken($GetAzContext.Subscription.TenantId)
         [System.String]$BearerToken = [System.String]::Concat('Bearer ', $Token.AccessToken)
         [System.Collections.Hashtable]$HeaderTable = @{
@@ -491,6 +491,17 @@ function EnrollMachine {
             Mandatory = $false
         )]
         [ValidateSet(
+            'GET',
+            'HEAD',
+            'PATCH',
+            'POST',
+            'PUT'
+        )]
+        [System.String]$RestMethod = 'PATCH',
+        [Parameter(
+            Mandatory = $false
+        )]
+        [ValidateSet(
             'https://management.azure.com',
             'https://management.usgovcloudapi.net',
             'https://management.microsoftazure.de',
@@ -554,7 +565,8 @@ function EnrollMachine {
     try {
         $ErrorActionPreference = 'SilentlyContinue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
-            $Response = Invoke-RestMethod -Method 'PUT' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
+            Write-Information -MessageData "Creating call to Azure REST API using method: '$RestMethod'."
+            $Response = Invoke-RestMethod -Method $RestMethod -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
             $ResponseTable.Add('Result', 'Success')
@@ -565,7 +577,7 @@ function EnrollMachine {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
             Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
