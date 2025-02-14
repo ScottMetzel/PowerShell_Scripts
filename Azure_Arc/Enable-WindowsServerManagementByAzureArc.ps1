@@ -563,7 +563,7 @@ function EnrollMachine {
 
     }
     try {
-        $ErrorActionPreference = 'SilentlyContinue'
+        $ErrorActionPreference = 'Continue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
             Write-Information -MessageData "Creating call to Azure REST API using method: '$RestMethod'."
             $Response = Invoke-RestMethod -Method $RestMethod -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
@@ -586,6 +586,7 @@ function EnrollMachine {
         }
     }
     catch {
+        $_
         Write-Warning -Message "Machine: '$MachineName'. Result: 'Error'. Continuing."
         $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
         $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
@@ -782,21 +783,21 @@ if (0 -lt $ResponseArray.Count) {
         if ($PSCmdlet.ShouldProcess($ReportFilePath)) {
             Write-Information -MessageData "Exporting CSV report to: '$ReportFilePath'."
             $ResponseArray | Export-Csv -LiteralPath $ReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation
-
-            [System.Int32]$LogicalCoreCount = 0
-            $ResponseArray | ForEach-Object -Process {
-                if ($_.Result -eq 'Success') {
-                    [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
-                }
-
-            }
-            Write-Information -MessageData "Total Logical Core Count Activated: '$LogicalCoreCount'"
         }
         else {
             Write-Information -MessageData "Would export CSV report to: '$ReportFilePath'."
             $ResponseArray | Export-Csv -LiteralPath $ReportFilePath -Encoding utf8 -Delimiter ',' -NoClobber -IncludeTypeInformation -WhatIf
         }
     }
+
+    [System.Int32]$LogicalCoreCount = 0
+    $ResponseArray | ForEach-Object -Process {
+        if ($_.Result -eq 'Success') {
+            [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+        }
+
+    }
+    Write-Information -MessageData "Total Logical Core Count enabled: '$LogicalCoreCount'"
 }
 else {
     Write-Information -MessageData 'No results to output.'
