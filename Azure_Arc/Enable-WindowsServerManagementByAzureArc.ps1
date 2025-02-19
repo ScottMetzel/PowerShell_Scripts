@@ -277,7 +277,12 @@ function CreateBearerTokenHeaderTable {
         ConfirmImpact = 'Low'
     )]
     [OutputType([System.Collections.Hashtable])]
-    param ()
+    param (
+        [Parameter(
+            Mandatory = $true
+        )]
+        [Microsoft.Azure.Commands.Profile.Models.Core.PSAzureContext]$AzContext
+    )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
 
@@ -286,7 +291,7 @@ function CreateBearerTokenHeaderTable {
         $ErrorActionPreference = 'Stop'
         $AzureRmProfileProvider = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile
         $ProfileClient = [Microsoft.Azure.Commands.ResourceManager.Common.rmProfileClient]::new($AzureRmProfileProvider)
-        $Token = $profileClient.AcquireAccessToken($GetAzContext.Subscription.TenantId)
+        $Token = $profileClient.AcquireAccessToken($AzContext.Subscription.TenantId)
         [System.String]$BearerToken = [System.String]::Concat('Bearer ', $Token.AccessToken)
         [System.Collections.Hashtable]$HeaderTable = @{
             'Content-Type'  = 'application/json'
@@ -497,7 +502,7 @@ function EnrollMachine {
             'POST',
             'PUT'
         )]
-        [System.String]$RestMethod = 'PATCH',
+        [System.String]$RestMethod = 'PUT',
         [Parameter(
             Mandatory = $false
         )]
@@ -521,17 +526,19 @@ function EnrollMachine {
     [System.Uri]$URI = [System.Uri]::new( $URIString )
     [System.String]$AbsoluteURI = $URI.AbsoluteUri
     [System.String]$ContentType = 'application/json'
+
+    Write-Information -MessageData "Getting current state of Arc-enabled Server: '$MachineName'."
+    $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
+    $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
+    $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
+
     [System.Collections.Hashtable]$DataTable = @{
         location   = $MachineLocation;
-        properties = @{
-            softwareAssurance = @{
-                softwareAssuranceCustomer = $true;
-            };
-        };
+        properties = $NewState
     };
 
-    $JSON = $DataTable | ConvertTo-Json;
-    Write-Information -MessageData "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
+    Write-Information -MessageData 'Building response table...'
+    $JSON = $DataTable | ConvertTo-Json -Depth 50;
     if ($Machine.plan -in @($null, '')) {
         [System.String]$MachinePlan = 'null'
     }
@@ -565,7 +572,8 @@ function EnrollMachine {
     try {
         $ErrorActionPreference = 'Continue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
-            Write-Information -MessageData "Creating call to Azure REST API using method: '$RestMethod'."
+            Write-Verbose -Message "Creating call to Azure REST API using method: '$RestMethod'."
+            Write-Information -MessageData "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
             $Response = Invoke-RestMethod -Method $RestMethod -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
@@ -601,7 +609,7 @@ function EnrollMachine {
 [System.Collections.ArrayList]$ResponseArray = @()
 ## Discovery
 Write-Information -MessageData 'Getting Bearer token.'
-[System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable
+[System.Collections.Hashtable]$BearerTokenHeaderTable = CreateBearerTokenHeaderTable -AzContext $GetAzContext
 
 switch ($PSCmdlet.ParameterSetName) {
     '__AllParameterSets' {
@@ -797,7 +805,7 @@ if (0 -lt $ResponseArray.Count) {
         }
 
     }
-    Write-Information -MessageData "Total Logical Core Count enabled: '$LogicalCoreCount'"
+    Write-Information -MessageData "Total Logical Core Count enrolled: '$LogicalCoreCount'"
 }
 else {
     Write-Information -MessageData 'No results to output.'
