@@ -527,15 +527,28 @@ function EnrollMachine {
     [System.String]$AbsoluteURI = $URI.AbsoluteUri
     [System.String]$ContentType = 'application/json'
 
-    Write-Information -MessageData "Getting current state of Arc-enabled Server: '$MachineName'."
-    $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
-    $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
-    $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
+    # 02.20.2025 - To do - the 'softwareAssurance' and 'softwareAssuranceCustomer' properties can be missing on an Arc-enabled Server.
+    # So, rolling back change which fixed ESU linkage until this is resolved so that enablement can still occur.
+    # Write-Information -MessageData "Getting current state of Arc-enabled Server: '$MachineName'."
+    # $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
+    # $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
+    # $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
+
+    # [System.Collections.Hashtable]$DataTable = @{
+    #     location   = $MachineLocation;
+    #     properties = $NewState
+    # };
 
     [System.Collections.Hashtable]$DataTable = @{
         location   = $MachineLocation;
-        properties = $NewState
+        properties = @{
+            softwareAssurance = @{
+                softwareAssuranceCustomer = $true;
+            };
+        };
     };
+
+    Write-Verbose -Message "URI: $AbsoluteURI"
 
     Write-Information -MessageData 'Building response table...'
     $JSON = $DataTable | ConvertTo-Json -Depth 50;
