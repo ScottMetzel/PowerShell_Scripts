@@ -571,20 +571,38 @@ function SetEnrollmentState {
     switch ($EnrollmentState) {
         'Enable' {
             Write-Information -MessageData "Set to enable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
+            # 02.20.2025 - To do - the 'softwareAssurance' and 'softwareAssuranceCustomer' properties can be missing on an Arc-enabled Server.
+            # So, rolling back change which fixed ESU linkage until this is resolved so that enablement can still occur.
+            #$GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
+            [System.Collections.Hashtable]$DataTable = @{
+                location   = $MachineLocation;
+                properties = @{
+                    softwareAssurance = @{
+                        softwareAssuranceCustomer = $true;
+                    };
+                };
+            };
         }
         'Disable' {
             Write-Information -MessageData "Set to disable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $false
+            #$GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $false
+            [System.Collections.Hashtable]$DataTable = @{
+                location   = $MachineLocation;
+                properties = @{
+                    softwareAssurance = @{
+                        softwareAssuranceCustomer = $false;
+                    };
+                };
+            };
         }
     }
 
-    $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
+    # $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
 
-    [System.Collections.Hashtable]$DataTable = @{
-        location   = $MachineLocation;
-        properties = $NewState
-    };
+    # [System.Collections.Hashtable]$DataTable = @{
+    #     location   = $MachineLocation;
+    #     properties = $NewState
+    # };
 
     Write-Information -MessageData 'Building response table...'
     $JSON = $DataTable | ConvertTo-Json -Depth 50;
