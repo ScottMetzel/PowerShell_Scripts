@@ -516,42 +516,97 @@ function EnrollMachine {
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Information -MessageData "Running: '$ThisFunctionName'."
-    [System.Array]$ResourceIDArray = $Machine.ResourceId -split '/'
     [System.String]$MachineSubscriptionID = $Machine.subscriptionID
-    [System.String]$MachineName = $Machine.Name
-    [System.String]$MachineResourceGroupName = $ResourceIDArray[4]
+    [System.String]$MachineName = $Machine.name
+    [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$URIString = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
+    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
-    [System.Uri]$URI = [System.Uri]::new( $URIString )
-    [System.String]$AbsoluteURI = $URI.AbsoluteUri
+    [System.Uri]$PUTURIObj = [System.Uri]::new( $PUTURI )
+    [System.String]$PUTAbsoluteURI = $PUTURIObj.AbsoluteUri
+
+    [System.Uri]$GETURIObj = [System.Uri]::new( $GETURI )
+    [System.String]$GETAbsoluteURI = $GETURIObj.AbsoluteUri
+
+    Write-Verbose -Message "GET URI: $GETAbsoluteURI"
+    Write-Verbose -Message "PUT URI: $PUTAbsoluteURI"
+
     [System.String]$ContentType = 'application/json'
 
-    # 02.20.2025 - To do - the 'softwareAssurance' and 'softwareAssuranceCustomer' properties can be missing on an Arc-enabled Server.
-    # So, rolling back change which fixed ESU linkage until this is resolved so that enablement can still occur.
-    # Write-Information -MessageData "Getting current state of Arc-enabled Server: '$MachineName'."
-    # $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
-    # $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
-    # $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
+    try {
+        $ErrorActionPreference = 'Stop'
+        Write-Information -MessageData "Getting current state for: '$MachineName'."
+        $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $GETAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
+    }
+    catch {
+        $_
+        throw
+    }
 
-    # [System.Collections.Hashtable]$DataTable = @{
-    #     location   = $MachineLocation;
-    #     properties = $NewState
-    # };
+    [System.Collections.ArrayList]$CurrentPropertyNames = @()
+    Write-Verbose -Message "Getting current properties under 'properties' property."
+    ($GetCurrentState.properties | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
+        $CurrentPropertyNames.Add($_) | Out-Null
+    }
+    [System.Int32]$CurrentPropertyNamesCount = $CurrentPropertyNames.Count
+    if (0 -eq $CurrentPropertyNamesCount) {
+        Write-Error -Message "An error occurred while getting current 'properties' properties."
+        throw
+    }
 
-    [System.Collections.Hashtable]$DataTable = @{
-        location   = $MachineLocation;
-        properties = @{
-            softwareAssurance = @{
-                softwareAssuranceCustomer = $true;
-            };
+    if ('softwareAssurance' -notin $CurrentPropertyNames) {
+        # If 'softwareAssurance' doesn't exist as a property, neither does the softwareAssuranceCustomer property within, so add the hashtable containing the 'true' value needed to enroll.
+        $SACTable = @{
+            softwareAssuranceCustomer = $true;
         };
+        Write-Verbose -Message "Adding softwareAssurance property and softwareAssurance hashtable set to 'true' as value to object."
+        $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACTable -TypeName 'System.Management.Automation.PSCustomObject'
+    }
+    else {
+        # If it does, then look for the 'softwareAssuranceCustomer' property within.
+        Write-Verbose -Message 'softwareAssurance property already exists.'
+
+        [System.Collections.ArrayList]$CurrentsoftwareAssuranceProperties = @()
+        Write-Verbose -Message "Getting current properties under 'softwareAssurance' property."
+        ($GetCurrentState.properties.softwareAssurance | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
+            $CurrentsoftwareAssuranceProperties.Add($_) | Out-Null
+        }
+
+        if ('softwareAssuranceCustomer' -notin $CurrentsoftwareAssuranceProperties) {
+            # If softwareAssuranceCustomer does not exist, add it with $true as the value
+            Write-Verbose -Message "Adding softwareAssuranceCustomer property and 'true' as value to object."
+            $GetCurrentState.properties.softwareAssurance | Add-Member -MemberType NoteProperty -Name 'softwareAssuranceCustomer' -Value $true -TypeName 'System.Boolean'
+        }
+        else {
+            # If softwareAssuranceCustomer exists, set it to true
+            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
+        }
+    }
+
+    # The new properties object shouldn't include those which can't be modified (like 'productProfile') or those which could incorrectly cast the new state (the platform has authority on the 'provisioningState', for instance)
+    [System.Collections.ArrayList]$ExcludedPropertyNames = @(
+        'cloudMetaData',
+        'detectedProperties',
+        'errorDetails',
+        'lastStatusChange',
+        'mssqlDiscovered'
+        'osInstallDate',
+        'productProfile',
+        'provisioningState',
+        'status'
+    )
+    Write-Verbose -Message 'Creating new properties object.'
+    $NewPropertiesState = $GetCurrentState.properties | Select-Object -ExcludeProperty $ExcludedPropertyNames
+
+    Write-Verbose -Message "Creating Hashtable for REST API 'PUT' command."
+    [System.Collections.Hashtable]$RESTBodyTable = @{
+        location   = $MachineLocation;
+        properties = $NewPropertiesState
     };
 
-    Write-Verbose -Message "URI: $AbsoluteURI"
-
-    Write-Information -MessageData 'Building response table...'
-    $JSON = $DataTable | ConvertTo-Json -Depth 50;
+    Write-Verbose -Message 'Building response table...'
+    $JSON = $RESTBodyTable | ConvertTo-Json -Depth 50;
     if ($Machine.plan -in @($null, '')) {
         [System.String]$MachinePlan = 'null'
     }
@@ -587,7 +642,7 @@ function EnrollMachine {
         if ($PSCmdlet.ShouldProcess($MachineName)) {
             Write-Verbose -Message "Creating call to Azure REST API using method: '$RestMethod'."
             Write-Information -MessageData "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
-            $Response = Invoke-RestMethod -Method $RestMethod -Uri $AbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
+            $Response = Invoke-RestMethod -Method $RestMethod -Uri $PUTAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
             $ResponseTable.Add('Result', 'Success')
@@ -598,7 +653,7 @@ function EnrollMachine {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$AbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$PUTAbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
             Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
@@ -812,13 +867,24 @@ if (0 -lt $ResponseArray.Count) {
     }
 
     [System.Int32]$LogicalCoreCount = 0
-    $ResponseArray | ForEach-Object -Process {
-        if ($_.Result -eq 'Success') {
-            [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
-        }
+    if ($PSCmdlet.ShouldProcess($MachineName)) {
+        $ResponseArray | ForEach-Object -Process {
+            if ($_.Result -eq 'Success') {
+                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+            }
 
+        }
+        Write-Information -MessageData "Total logical core count enrolled: '$LogicalCoreCount'"
     }
-    Write-Information -MessageData "Total Logical Core Count enrolled: '$LogicalCoreCount'"
+    else {
+        $ResponseArray | ForEach-Object -Process {
+            if ($_.Result -eq 'N/A - WhatIf') {
+                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+            }
+
+        }
+        Write-Information -MessageData "Total logical core count which would be enrolled: '$LogicalCoreCount'"
+    }
 }
 else {
     Write-Information -MessageData 'No results to output.'
