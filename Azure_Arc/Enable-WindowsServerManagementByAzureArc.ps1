@@ -529,14 +529,14 @@ function EnrollMachine {
     [System.Uri]$GETURIObj = [System.Uri]::new( $GETURI )
     [System.String]$GETAbsoluteURI = $GETURIObj.AbsoluteUri
 
-    [System.String]$ContentType = 'application/json'
+    Write-Verbose -Message "GET URI: $GETAbsoluteURI"
+    Write-Verbose -Message "PUT URI: $PUTAbsoluteURI"
 
-    [System.Collections.Hashtable]$SACTable = @{
-        softwareAssuranceCustomer = $true;
-    };
+    [System.String]$ContentType = 'application/json'
 
     try {
         $ErrorActionPreference = 'Stop'
+        Write-Information -MessageData "Getting current state for: '$MachineName'."
         $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $GETAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
     }
     catch {
@@ -545,53 +545,68 @@ function EnrollMachine {
     }
 
     [System.Collections.ArrayList]$CurrentPropertyNames = @()
+    Write-Verbose -Message "Getting current properties under 'properties' property."
     ($GetCurrentState.properties | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
         $CurrentPropertyNames.Add($_) | Out-Null
     }
     [System.Int32]$CurrentPropertyNamesCount = $CurrentPropertyNames.Count
     if (0 -eq $CurrentPropertyNamesCount) {
-        Write-Error -Message 'An error occurred while getting current state properties.'
+        Write-Error -Message "An error occurred while getting current 'properties' properties."
         throw
     }
 
     if ('softwareAssurance' -notin $CurrentPropertyNames) {
-        Write-Verbose -Message 'Adding softwareAssurance property and value to object.'
-        [System.Management.Automation.PSCustomObject]$NewState = $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACTable
+        # If 'softwareAssurance' doesn't exist as a property, neither does the softwareAssuranceCustomer property within, so add the hashtable containing the 'true' value needed to enroll.
+        $SACTable = @{
+            softwareAssuranceCustomer = $true;
+        };
+        Write-Verbose -Message "Adding softwareAssurance property and softwareAssurance hashtable set to 'true' as value to object."
+        $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACTable -TypeName 'System.Management.Automation.PSCustomObject'
     }
     else {
-        Write-Verbose -Message 'softwareAssurance property already exists. Checking for softwareAssuranceCustomer property within.'
+        # If it does, then look for the 'softwareAssuranceCustomer' property within.
+        Write-Verbose -Message 'softwareAssurance property already exists.'
 
-        # Check for softwareAssuranceCustomer
-        # if softwareAssuranceCustomer exists, flip it to true
-        # if it does not, add it with $true as the value
+        [System.Collections.ArrayList]$CurrentsoftwareAssuranceProperties = @()
+        Write-Verbose -Message "Getting current properties under 'softwareAssurance' property."
+        ($GetCurrentState.properties.softwareAssurance | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
+            $CurrentsoftwareAssuranceProperties.Add($_) | Out-Null
+        }
 
-        $GetCurrentState.properties.softwareAssurance = @{
-            softwareAssuranceCustomer = $true;
+        if ('softwareAssuranceCustomer' -notin $CurrentsoftwareAssuranceProperties) {
+            # If softwareAssuranceCustomer does not exist, add it with $true as the value
+            Write-Verbose -Message "Adding softwareAssuranceCustomer property and 'true' as value to object."
+            $GetCurrentState.properties.softwareAssurance | Add-Member -MemberType NoteProperty -Name 'softwareAssuranceCustomer' -Value $true -TypeName 'System.Boolean'
+        }
+        else {
+            # If softwareAssuranceCustomer exists, set it to true
+            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
         }
     }
 
+    # The new properties object shouldn't include those which can't be modified (like 'productProfile') or those which could incorrectly cast the new state (the platform has authority on the 'provisioningState', for instance)
+    [System.Collections.ArrayList]$ExcludedPropertyNames = @(
+        'cloudMetaData',
+        'detectedProperties',
+        'errorDetails',
+        'lastStatusChange',
+        'mssqlDiscovered'
+        'osInstallDate',
+        'productProfile',
+        'provisioningState',
+        'status'
+    )
+    Write-Verbose -Message 'Creating new properties object.'
+    $NewPropertiesState = $GetCurrentState.properties | Select-Object -ExcludeProperty $ExcludedPropertyNames
 
-    $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $true
-    # $NewState = $GetCurrentState.properties | Select-Object -ExcludeProperty 'productProfile', 'provisioningState'
-
-    # [System.Collections.Hashtable]$DataTable = @{
-    #     location   = $MachineLocation;
-    #     properties = $NewState
-    # };
-
-    [System.Collections.Hashtable]$DataTable = @{
+    Write-Verbose -Message "Creating Hashtable for REST API 'PUT' command."
+    [System.Collections.Hashtable]$RESTBodyTable = @{
         location   = $MachineLocation;
-        properties = @{
-            softwareAssurance = @{
-                softwareAssuranceCustomer = $true;
-            };
-        };
+        properties = $NewPropertiesState
     };
 
-    Write-Verbose -Message "URI: $PUTAbsoluteURI"
-
-    Write-Information -MessageData 'Building response table...'
-    $JSON = $DataTable | ConvertTo-Json -Depth 50;
+    Write-Verbose -Message 'Building response table...'
+    $JSON = $RESTBodyTable | ConvertTo-Json -Depth 50;
     if ($Machine.plan -in @($null, '')) {
         [System.String]$MachinePlan = 'null'
     }
@@ -852,13 +867,24 @@ if (0 -lt $ResponseArray.Count) {
     }
 
     [System.Int32]$LogicalCoreCount = 0
-    $ResponseArray | ForEach-Object -Process {
-        if ($_.Result -eq 'Success') {
-            [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
-        }
+    if ($PSCmdlet.ShouldProcess($MachineName)) {
+        $ResponseArray | ForEach-Object -Process {
+            if ($_.Result -eq 'Success') {
+                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+            }
 
+        }
+        Write-Information -MessageData "Total logical core count enrolled: '$LogicalCoreCount'"
     }
-    Write-Information -MessageData "Total Logical Core Count enrolled: '$LogicalCoreCount'"
+    else {
+        $ResponseArray | ForEach-Object -Process {
+            if ($_.Result -eq 'N/A - WhatIf') {
+                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+            }
+
+        }
+        Write-Information -MessageData "Total logical core count which would be enrolled: '$LogicalCoreCount'"
+    }
 }
 else {
     Write-Information -MessageData 'No results to output.'
