@@ -211,7 +211,7 @@ $InformationPreference = 'Continue'
 Write-Information -MessageData "Starting: '$ScriptName'."
 
 ### BEGIN: Connection Check ###
-Write-Information -MessageData 'Getting current Azure context...'
+Write-Verbose -Message 'Getting current Azure context...'
 $GetAzContext = Get-AzContext
 
 if ($GetAzContext) {
@@ -223,10 +223,10 @@ else {
 }
 ### END: Connection Check ###
 ### BEGIN: ARM URL Capture ###
-Write-Information -MessageData 'Getting ARM URL'
+Write-Verbose -Message 'Getting ARM URL'
 [System.String]$AzureResourceManagerURL = $GetAzContext.Environment.ResourceManagerUrl
 if ($AzureResourceManagerURL -notin @($null, '')) {
-    Write-Information -MessageData "ARM URL is: '$AzureResourceManagerURL'."
+    Write-Verbose -Message "ARM URL is: '$AzureResourceManagerURL'."
 }
 else {
     Write-Error -Message "ARM URL is empty or null and should start with 'https://management...'. Please connect to Azure and try again."
@@ -284,9 +284,9 @@ function CreateBearerTokenHeaderTable {
         [Microsoft.Azure.Commands.Profile.Models.Core.PSAzureContext]$AzContext
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
 
-    Write-Information -MessageData 'Creating bearer token object.'
+    Write-Verbose -Message 'Creating bearer token object.'
     try {
         $ErrorActionPreference = 'Stop'
         $AzureRmProfileProvider = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile
@@ -298,7 +298,7 @@ function CreateBearerTokenHeaderTable {
             'Authorization' = $BearerToken
         }
 
-        Write-Information -MessageData 'Outputting bearer token header table.'
+        Write-Verbose -Message 'Outputting bearer token header table.'
         $HeaderTable
     }
     catch {
@@ -347,7 +347,7 @@ function DiscoverMachines {
         [System.Int32]$TakeFirst = 250
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
 
     $ErrorActionPreference = 'Stop'
     [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer != true"
@@ -380,7 +380,7 @@ function DiscoverMachines {
             [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' and subscriptionId in ', $SubscriptionIDsQueryArrayString)
         }
         'ResourceGroupOrMachines' {
-            Write-Information -MessageData 'Getting context.'
+            Write-Verbose -Message 'Getting context.'
             $GetAzContext = Get-AzContext
             [System.String]$AzSubscriptionName = $GetAzContext.Subscription.Name
             [System.String]$AzSubscriptionID = $GetAzContext.Subscription.Id
@@ -475,7 +475,7 @@ function DiscoverMachines {
     }
 
     ## 01.16.2025 - TO DO: Change output to hashtable to return ineligible servers
-    Write-Information -MessageData 'Outputting array result.'
+    Write-Verbose -Message 'Outputting array result.'
     $MachinesArray
 }
 
@@ -515,7 +515,7 @@ function EnrollMachine {
         [System.String]$ResourceManagerURL = 'https://management.azure.com'
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
     [System.String]$MachineSubscriptionID = $Machine.subscriptionID
     [System.String]$MachineName = $Machine.name
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
@@ -536,7 +536,7 @@ function EnrollMachine {
 
     try {
         $ErrorActionPreference = 'Stop'
-        Write-Information -MessageData "Getting current state for: '$MachineName'."
+        Write-Verbose -Message "Getting current state for: '$MachineName'."
         $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $GETAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
     }
     catch {
@@ -662,12 +662,12 @@ function EnrollMachine {
         }
     }
     catch {
-        $_
         Write-Warning -Message "Machine: '$MachineName'. Result: 'Error'. Continuing."
+        $Response
         $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
         $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
         $ResponseTable.Add('Result', 'Error')
-        $ResponseTable.Add('ErrorMessage', ($_.Errordetails.Message | ConvertFrom-Json).Error.Message)
+        $ResponseTable.Add('ErrorMessage', $_.Errordetails.Message)
     }
 
     $ResponseTable
@@ -742,8 +742,8 @@ switch ($PSCmdlet.ParameterSetName) {
                 [System.String]$MachineNamesString = $MachineNames
             }
 
-            Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
-            Write-Information -MessageData 'Machine names: '$MachineNamesString'."
+            Write-Information -MessageData "Will attempt to enroll these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
+            Write-Information -MessageData "Machine names: '$MachineNamesString'."
             [System.Array]$MachinesArray = DiscoverMachines -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
     }
