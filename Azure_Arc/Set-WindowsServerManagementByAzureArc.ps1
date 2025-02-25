@@ -219,7 +219,7 @@ $InformationPreference = 'Continue'
 Write-Information -MessageData "Starting: '$ScriptName'."
 
 ### BEGIN: Connection Check ###
-Write-Information -MessageData 'Getting current Azure context...'
+Write-Verbose -Message 'Getting current Azure context...'
 $GetAzContext = Get-AzContext
 
 if ($GetAzContext) {
@@ -231,10 +231,10 @@ else {
 }
 ### END: Connection Check ###
 ### BEGIN: ARM URL Capture ###
-Write-Information -MessageData 'Getting ARM URL'
+Write-Verbose -Message 'Getting ARM URL'
 [System.String]$AzureResourceManagerURL = $GetAzContext.Environment.ResourceManagerUrl
 if ($AzureResourceManagerURL -notin @($null, '')) {
-    Write-Information -MessageData "ARM URL is: '$AzureResourceManagerURL'."
+    Write-Verbose -Message "ARM URL is: '$AzureResourceManagerURL'."
 }
 else {
     Write-Error -Message "ARM URL is empty or null and should start with 'https://management...'. Please connect to Azure and try again."
@@ -292,9 +292,9 @@ function CreateBearerTokenHeaderTable {
         [Microsoft.Azure.Commands.Profile.Models.Core.PSAzureContext]$AzContext
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
 
-    Write-Information -MessageData 'Creating bearer token object.'
+    Write-Verbose -Message 'Creating bearer token object.'
     try {
         $ErrorActionPreference = 'Stop'
         $AzureRmProfileProvider = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile
@@ -306,7 +306,7 @@ function CreateBearerTokenHeaderTable {
             'Authorization' = $BearerToken
         }
 
-        Write-Information -MessageData 'Outputting bearer token header table.'
+        Write-Verbose -Message 'Outputting bearer token header table.'
         $HeaderTable
     }
     catch {
@@ -363,18 +363,18 @@ function DiscoverMachines {
         [System.Int32]$TakeFirst = 250
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
 
     $ErrorActionPreference = 'Stop'
     [System.String]$ResourceGraphQuery = "resources | where type =~ 'microsoft.hybridcompute/machines' and properties.osType=='windows' and properties.status=='Connected' and properties.licenseProfile.softwareAssurance.softwareAssuranceCustomer"
     switch ($EnrollmentState) {
         'Enable' {
-            Write-Information -MessageData "Enrollment state is set to: '$EnrollmentState'."
+            Write-Verbose -Message "Enrollment state is set to: '$EnrollmentState'."
             [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' != true')
             [System.String]$EnrollmentStateVerbPastTense = 'enrolled'
         }
         'Disable' {
-            Write-Information -MessageData "Enrollment state is set to: '$EnrollmentState'."
+            Write-Verbose -Message "Enrollment state is set to: '$EnrollmentState'."
             [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' == true')
             [System.String]$EnrollmentStateVerbPastTense = 'disenrolled'
         }
@@ -410,7 +410,7 @@ function DiscoverMachines {
             [System.String]$ResourceGraphQuery = [System.String]::Concat($ResourceGraphQuery, ' and subscriptionId in ', $SubscriptionIDsQueryArrayString)
         }
         'ResourceGroupOrMachines' {
-            Write-Information -MessageData 'Getting context.'
+            Write-Verbose -Message 'Getting context.'
             $GetAzContext = Get-AzContext
             [System.String]$AzSubscriptionName = $GetAzContext.Subscription.Name
             [System.String]$AzSubscriptionID = $GetAzContext.Subscription.Id
@@ -505,7 +505,7 @@ function DiscoverMachines {
     }
 
     ## 01.16.2025 - TO DO: Change output to hashtable to return ineligible servers
-    Write-Information -MessageData 'Outputting array result.'
+    Write-Verbose -Message 'Outputting array result.'
     $MachinesArray
 }
 
@@ -553,7 +553,7 @@ function SetEnrollmentState {
         [System.String]$ResourceManagerURL = 'https://management.azure.com/'
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
-    Write-Information -MessageData "Running: '$ThisFunctionName'."
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
     [System.String]$MachineSubscriptionID = $Machine.subscriptionID
     [System.String]$MachineName = $Machine.name
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
@@ -574,7 +574,7 @@ function SetEnrollmentState {
 
     try {
         $ErrorActionPreference = 'Stop'
-        Write-Information -MessageData "Getting current state for: '$MachineName'."
+        Write-Verbose -Message "Getting current state for: '$MachineName'."
         $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $GETAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
     }
     catch {
@@ -585,12 +585,17 @@ function SetEnrollmentState {
     switch ($EnrollmentState) {
         'Enable' {
             Write-Information -MessageData "Set to enable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            [System.Boolean]$SoftwareAssuranceCustomer = $true;
+            [System.Boolean]$SACustomerValue = $true;
         }
         'Disable' {
             Write-Information -MessageData "Set to disable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            [System.Boolean]$SoftwareAssuranceCustomer = $false;
+            [System.Boolean]$SACustomerValue = $false;
 
+        }
+        default {
+            $ErrorActionPreference = 'Stop'
+            Write-Error -Message "Undefined enrollment state supplied. Please try again specifying 'Enable' or 'Disable' as the intent."
+            throw
         }
     }
 
@@ -607,11 +612,11 @@ function SetEnrollmentState {
 
     if ('softwareAssurance' -notin $CurrentPropertyNames) {
         # If 'softwareAssurance' doesn't exist as a property, neither does the softwareAssuranceCustomer property within, so add the hashtable containing the intended enrollment state as the value needed to enroll / disenroll.
-        $SACTable = @{
-            softwareAssuranceCustomer = $SoftwareAssuranceCustomer;
+        $SACustomerTable = @{
+            softwareAssuranceCustomer = $SACustomerValue;
         };
-        Write-Verbose -Message "Adding softwareAssurance property and softwareAssurance hashtable set to '$SoftwareAssuranceCustomer' as value to object."
-        $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACTable -TypeName 'System.Management.Automation.PSCustomObject'
+        Write-Verbose -Message "Adding softwareAssurance property and softwareAssurance hashtable set to '$SACustomerValue' as value to object."
+        $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACustomerTable -TypeName 'System.Management.Automation.PSCustomObject'
     }
     else {
         # If it does, then look for the 'softwareAssuranceCustomer' property within.
@@ -625,12 +630,12 @@ function SetEnrollmentState {
 
         if ('softwareAssuranceCustomer' -notin $CurrentsoftwareAssuranceProperties) {
             # If softwareAssuranceCustomer does not exist, add it with the intended enrollment state as the value
-            Write-Verbose -Message "Adding softwareAssuranceCustomer property and '$SoftwareAssuranceCustomer' as value to object."
-            $GetCurrentState.properties.softwareAssurance | Add-Member -MemberType NoteProperty -Name 'softwareAssuranceCustomer' -Value $SoftwareAssuranceCustomer -TypeName 'System.Boolean'
+            Write-Verbose -Message "Adding softwareAssuranceCustomer property and '$SACustomerValue' as value to object."
+            $GetCurrentState.properties.softwareAssurance | Add-Member -MemberType NoteProperty -Name 'softwareAssuranceCustomer' -Value $SACustomerValue -TypeName 'System.Boolean'
         }
         else {
             # If softwareAssuranceCustomer exists, set it to true
-            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $SoftwareAssuranceCustomer
+            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $SACustomerValue
         }
     }
 
@@ -655,7 +660,7 @@ function SetEnrollmentState {
         properties = $NewPropertiesState
     };
 
-    Write-Information -MessageData 'Building response table...'
+    Write-Verbose -Message 'Building response table...'
     $JSON = $RESTBodyTable | ConvertTo-Json -Depth 50;
     if ($Machine.plan -in @($null, '')) {
         [System.String]$MachinePlan = 'null'
@@ -711,12 +716,12 @@ function SetEnrollmentState {
         }
     }
     catch {
-        $_
         Write-Warning -Message "Machine: '$MachineName'. Result: 'Error'. Continuing."
+        $Response
         $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
         $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
         $ResponseTable.Add('Result', 'Error')
-        $ResponseTable.Add('ErrorMessage', ($_.Errordetails.Message | ConvertFrom-Json).Error.Message)
+        $ResponseTable.Add('ErrorMessage', $_.Errordetails.Message)
     }
 
     $ResponseTable
@@ -803,8 +808,8 @@ switch ($PSCmdlet.ParameterSetName) {
                 [System.String]$MachineNamesString = $MachineNames
             }
 
-            Write-Information -MessageData "Will attempt to $EnrollmentStateVerbPresentTense these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'.'
-            Write-Information -MessageData 'Machine names: '$MachineNamesString'."
+            Write-Information -MessageData "Will attempt to $EnrollmentStateVerbPresentTense these specific Arc-enabled Servers in subscription with name: '$ThisAzSubscriptionName', ID: '$ThisAzSubscriptionID', and resource group: '$ResourceGroupNames'."
+            Write-Information -MessageData "Machine names: '$MachineNamesString'."
             [System.Array]$MachinesArray = DiscoverMachines -EnrollmentState $EnrollmentState -ResourceGroupNames $ResourceGroupNames -MachineNames $MachineNames -TakeFirst $TakeFirst
         }
     }
