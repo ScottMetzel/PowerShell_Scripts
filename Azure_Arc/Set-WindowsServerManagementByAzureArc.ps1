@@ -676,6 +676,20 @@ function SetEnrollmentState {
         [System.String]$MachineSKU = $Machine.sku
     }
 
+    if ($Machine.coreCount -in @($null, '')) {
+        [System.Int64]$MachineCoreCount = 0
+    }
+    else {
+        [System.Int64]$MachineCoreCount = $Machine.coreCount
+    }
+
+    if ($Machine.logicalCoreCount -in @($null, '')) {
+        [System.Int64]$MachineLogicalCoreCount = 0
+    }
+    else {
+        [System.Int64]$MachineLogicalCoreCount = $Machine.logicalCoreCount
+    }
+
     [System.Collections.Hashtable]$ResponseTable = @{
         MachineName      = $MachineName;
         TenantID         = $Machine.tenantId;
@@ -688,8 +702,8 @@ function SetEnrollmentState {
         osSku            = $Machine.osSku;
         licenseStatus    = $Machine.licenseStatus;
         licenseChannel   = $Machine.licenseChannel;
-        coreCount        = $Machine.coreCount;
-        logicalCoreCount = $Machine.logicalCoreCount;
+        coreCount        = $MachineCoreCount;
+        logicalCoreCount = $MachineLogicalCoreCount;
 
     }
     try {
@@ -940,11 +954,11 @@ if (0 -lt $ResponseArray.Count) {
         }
     }
 
-    [System.Int32]$LogicalCoreCount = 0
+    [System.Int64]$LogicalCoreCount = 0
     if ($PSCmdlet.ShouldProcess($MachineName)) {
         $ResponseArray | ForEach-Object -Process {
             if ($_.Result -eq 'Success') {
-                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+                [System.Int64]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
             }
 
         }
@@ -953,7 +967,7 @@ if (0 -lt $ResponseArray.Count) {
     else {
         $ResponseArray | ForEach-Object -Process {
             if ($_.Result -eq 'N/A - WhatIf') {
-                [System.Int32]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
+                [System.Int64]$LogicalCoreCount = $LogicalCoreCount + $_.LogicalCoreCount
             }
 
         }
