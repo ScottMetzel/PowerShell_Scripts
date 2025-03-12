@@ -137,7 +137,7 @@ else {
 Write-Verbose -Message "Joining storage account: '$StorageAccountName' to domain."
 try {
     $ErrorActionPreference = 'Stop'
-    Join-AzStorageAccount -ResourceGroupName $ResourceGroupName -StorageAccountName $StorageAccountName -DomainAccountType $DomainAccountType -OrganizationalUnitDistinguishedName $OUDistinguishedName
+    Join-AzStorageAccount -ResourceGroupName $ResourceGroupName -StorageAccountName $StorageAccountName -DomainAccountType $DomainAccountType -OrganizationalUnitDistinguishedName $OUDistinguishedName -SamAccountName $SamAccountName
 }
 catch {
     Write-Error -Message $_
