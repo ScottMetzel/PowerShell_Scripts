@@ -8,11 +8,17 @@ Tools in this directory are used with Azure Arc. Please refer to the list below 
 
 # Tools for Azure Arc
 1. [Enable Windows Server Management via Azure Arc](#EnableWinSrvManagement)
-   1. [Download](#Download)
-   2. [Preqreuisites](#Prerequisites)
-   3. [How to Execute](#HowToExecute)
-   4. [Examples](#Examples)
-   5. [Outputs](#Outputs)
+   1. [Download](#EnableWinSrvManagement_Download)
+   2. [Preqreuisites](#EnableWinSrvManagement_Prerequisites)
+   3. [How to Execute](#EnableWinSrvManagement_HowToExecute)
+   4. [Examples](#EnableWinSrvManagement_Examples)
+   5. [Outputs](#EnableWinSrvManagement_Outputs)
+2. [Enable Windows Server Management via Azure Arc - Runbook Edition](#EnableWinSrvManagementRunbook)
+   1. [Download](#EnableWinSrvManagementRunbook_Download)
+   2. [Preqreuisites](#EnableWinSrvManagementRunbook_Prerequisites)
+   3. [How to Execute](#EnableWinSrvManagementRunbook_HowToExecute)
+   4. [Examples](#EnableWinSrvManagementRunbook_Examples)
+   5. [Outputs](#EnableWinSrvManagementRunbook_Outputs)
 
 <a name="EnableWinSrvManagement"></a>
 ## Enable Windows Server Management via Azure Arc
@@ -29,11 +35,11 @@ It can enroll Arc-enabled Servers in Windows Server Management at all scopes, wh
 
 Despite all this fanciness, it doesn't take much to run.
 
-<a name="Download"></a>
+<a name="EnableWinSrvManagement_Download"></a>
 ### Download
 The script is available by its name in this directory: [Enable-WindowsServerManagementByAzureArc.ps1](https://github.com/ScottMetzel/PowerShell_Scripts/blob/main/Azure_Arc/Enable-WindowsServerManagementByAzureArc.ps1)
 
-<a name="Prerequisites"></a>
+<a name="EnableWinSrvManagement_Prerequisites"></a>
 ### Prerequisites
 - Your Work or School Account must be assigned the [*Azure Connected Machine Resource Administrator*](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator) role.
 - You must be connected to Azure.
@@ -44,13 +50,13 @@ The script is available by its name in this directory: [Enable-WindowsServerMana
 - The 'Az.Accounts' and 'Az.Resources' PowerShell modules must be installed.
   - Azure Cloud Shell already has these modules installed, and it keeps them up to date!
 
-<a name="HowToExecute"></a>
+<a name="EnableWinSrvManagement_HowToExecute"></a>
 ### How to execute
 I recommend downloading this script, and then uploading it to a CloudShell session. Once uploaded, the script can be executed using the examples below, which assume you're not connected to Azure (again, CloudShell automatically connects your account to Azure).
 
 This will work in a local PowerShell 7 session as well, but CloudShell offloads maintenance of modules and has connectivity to Azure, too.
 
-<a name="Examples"></a>
+<a name="EnableWinSrvManagement_Examples"></a>
 ### Examples
 #### Example 1 - Unfiltered
 ```
@@ -181,10 +187,38 @@ PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-
 ```
 Running the tool this way will attempt to enroll all servers it discovers in a specific resource group, but excludes a server using its Resource ID.
 
-<a name="Outputs"></a>
+<a name="EnableWinSrvManagement_Outputs"></a>
 ### Outputs
 #### [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
 When eligible servers are discovered, it outputs an array of hashtables.
 
 #### [CSV](https://learn.microsoft.com/en-us/dotnet/api/system.windows.dataformats.commaseparatedvalue?view=windowsdesktop-9.0)
 When the 'ReportDirectoryPath' parameter is specified, the tool outputs a report in CSV format. The CSV uses UTF8 formatting.
+
+<a name="EnableWinSrvManagementRunbook"></a>
+## Enable Windows Server Management via Azure Arc - Runbook Edition
+
+<a name="EnableWinSrvManagementRunbook_Download"></a>
+### Download
+The script is available by its name in this directory: [Enable-WSMgmtByAzureArc_Runbook.ps1](https://github.com/ScottMetzel/PowerShell_Scripts/blob/main/Azure_Arc/Enable-WSMgmtByAzureArc_Runbook.ps1)
+
+<a name="EnableWinSrvManagementRunbook_Prerequisites"></a>
+### Prerequisites
+Docs forthcoming!
+
+<a name="EnableWinSrvManagementRunbook_HowToExecute"></a>
+### How to execute
+Working on it!
+
+<a name="EnableWinSrvManagementRunbook_Examples"></a>
+### Examples
+#### Example 1 - Unfiltered
+```
+PS> .\Enable-WindowsServerManagementByAzureArc.ps1
+```
+Running the tool this way will attempt to enroll all servers it discovers at all scopes and can span Entra ID tenants, if the Managed Identity associated with the Automation Account has the requisite role across tenants. It's the simplest way to keep your servers enrolled.
+
+<a name="EnableWinSrvManagementRunbook_Outputs"></a>
+### Outputs
+#### [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
+When eligible servers are discovered, it outputs an array of hashtables.
