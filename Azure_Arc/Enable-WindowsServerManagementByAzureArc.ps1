@@ -834,10 +834,10 @@ if (1 -le $MachinesArrayCount) {
         Write-Information -MessageData "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
 
         if ($PSBoundParameters.ContainsKey('ReportOnly')) {
-            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -WhatIf
+            $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -WhatIf
         }
         else {
-            $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+            $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
         }
 
         $ResponseArray.Add($Response) | Out-Null

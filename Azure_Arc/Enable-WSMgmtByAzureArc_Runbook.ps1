@@ -431,7 +431,7 @@ if (1 -le $MachinesArrayCount) {
 
         Write-Verbose -Message "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
         ## Enrollment
-        $Response = EnrollMachine -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+        $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
 
         $ResponseArray.Add($Response) | Out-Null
 
