@@ -507,12 +507,12 @@ function EnrollMachine {
             Mandatory = $false
         )]
         [ValidateSet(
-            'https://management.azure.com',
-            'https://management.usgovcloudapi.net',
-            'https://management.microsoftazure.de',
-            'https://management.chinacloudapi.cn'
+            'https://management.azure.com/',
+            'https://management.usgovcloudapi.net/',
+            'https://management.microsoftazure.de/',
+            'https://management.chinacloudapi.cn/'
         )]
-        [System.String]$ResourceManagerURL = 'https://management.azure.com'
+        [System.String]$ResourceManagerURL = 'https://management.azure.com/'
     )
     [System.String]$ThisFunctionName = $MyInvocation.MyCommand
     Write-Verbose -Message "Running: '$ThisFunctionName'."
@@ -520,8 +520,8 @@ function EnrollMachine {
     [System.String]$MachineName = $Machine.name
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
-    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
+    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
     [System.Uri]$PUTURIObj = [System.Uri]::new( $PUTURI )
     [System.String]$PUTAbsoluteURI = $PUTURIObj.AbsoluteUri
