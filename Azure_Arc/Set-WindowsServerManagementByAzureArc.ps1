@@ -558,8 +558,8 @@ function SetEnrollmentState {
     [System.String]$MachineName = $Machine.name
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
-    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'/subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
+    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
     [System.Uri]$PUTURIObj = [System.Uri]::new( $PUTURI )
     [System.String]$PUTAbsoluteURI = $PUTURIObj.AbsoluteUri
