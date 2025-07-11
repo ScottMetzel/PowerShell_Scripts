@@ -20,12 +20,11 @@
     .NOTES
     ===========================================================================
     Created with: 	Microsoft Visual Studio Code
-    Created on:   	01/08/2025 6:17 PM
+    Created on:   	07/09/2025 12:55 PM
     Created by:   	Scott Metzel
     Organization: 	-
-    Filename:     	Enable-WindowsServerManagementByAzureArc.ps1
-    Comments:     	This script builds on Kevin Sullivan's original script, here:
-                    https://github.com/kevinsul/arc-ws-sa-enable/blob/main/arc-ws-sa-enable.ps1
+    Filename:     	Set-MaintenanceConfigurationStartDateToPT
+    Comments:     	-
     ===========================================================================
 
     .PARAMETER MaintenanceConfigurationRIDs
