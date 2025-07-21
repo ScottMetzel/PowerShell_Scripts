@@ -559,13 +559,11 @@ function SetEnrollmentState {
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
     [System.String]$MachineResourceID = $Machine.id
-
     [System.String]$ChangeURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
     [System.Uri]$ChangeURIObj = [System.Uri]::new( $ChangeURI )
     [System.String]$ChangeURIAbsolute = $ChangeURIObj.AbsoluteUri
 
-    Write-Verbose -Message "Discover URI: $DiscoverURIAbsolute"
     Write-Verbose -Message "Change URI: $ChangeURIAbsolute"
 
     [System.String]$ContentType = 'application/json'
