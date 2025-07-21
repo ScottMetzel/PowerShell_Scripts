@@ -529,7 +529,7 @@ function SetEnrollmentState {
         [ValidatePattern(
             '^(\d{4})(-)(\d{2})(-)(\d{2})($|(-preview)$)'
         )]
-        [System.String]$ARMAPIVersion = '2024-07-10',
+        [System.String]$ARMAPIVersion = '2025-01-13',
         [Parameter(
             Mandatory = $false
         )]
@@ -540,7 +540,7 @@ function SetEnrollmentState {
             'POST',
             'PUT'
         )]
-        [System.String]$RestMethod = 'PUT',
+        [System.String]$RestMethod = 'PATCH',
         [Parameter(
             Mandatory = $false
         )]
@@ -558,38 +558,34 @@ function SetEnrollmentState {
     [System.String]$MachineName = $Machine.name
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
-    [System.String]$GETURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '?api-version=', $ARMAPIVersion)
-    [System.String]$PUTURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$MachineResourceID = $Machine.id
 
-    [System.Uri]$PUTURIObj = [System.Uri]::new( $PUTURI )
-    [System.String]$PUTAbsoluteURI = $PUTURIObj.AbsoluteUri
+    [System.String]$ChangeURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
-    [System.Uri]$GETURIObj = [System.Uri]::new( $GETURI )
-    [System.String]$GETAbsoluteURI = $GETURIObj.AbsoluteUri
+    [System.Uri]$ChangeURIObj = [System.Uri]::new( $ChangeURI )
+    [System.String]$ChangeURIAbsolute = $ChangeURIObj.AbsoluteUri
 
-    Write-Verbose -Message "GET URI: $GETAbsoluteURI"
-    Write-Verbose -Message "PUT URI: $PUTAbsoluteURI"
+    Write-Verbose -Message "Discover URI: $DiscoverURIAbsolute"
+    Write-Verbose -Message "Change URI: $ChangeURIAbsolute"
 
     [System.String]$ContentType = 'application/json'
-
-    try {
-        $ErrorActionPreference = 'Stop'
-        Write-Verbose -Message "Getting current state for: '$MachineName'."
-        $GetCurrentState = Invoke-RestMethod -Method 'GET' -Uri $GETAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable
-    }
-    catch {
-        $_
-        throw
-    }
 
     switch ($EnrollmentState) {
         'Enable' {
             Write-Information -MessageData "Set to enable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            [System.Boolean]$SACustomerValue = $true;
+            [System.Collections.Hashtable]$NewPropertiesState = @{
+                softwareAssurance = @{
+                    softwareAssuranceCustomer= $true;
+                };
+            };
         }
         'Disable' {
             Write-Information -MessageData "Set to disable Windows Server Management by Azure Arc on Server: '$MachineName'."
-            [System.Boolean]$SACustomerValue = $false;
+            [System.Collections.Hashtable]$NewPropertiesState = @{
+                softwareAssurance = @{
+                    softwareAssuranceCustomer= $false;
+                };
+            };
 
         }
         default {
@@ -599,62 +595,7 @@ function SetEnrollmentState {
         }
     }
 
-    [System.Collections.ArrayList]$CurrentPropertyNames = @()
-    Write-Verbose -Message "Getting current properties under 'properties' property."
-    ($GetCurrentState.properties | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
-        $CurrentPropertyNames.Add($_) | Out-Null
-    }
-    [System.Int32]$CurrentPropertyNamesCount = $CurrentPropertyNames.Count
-    if (0 -eq $CurrentPropertyNamesCount) {
-        Write-Error -Message "An error occurred while getting current 'properties' properties."
-        throw
-    }
-
-    if ('softwareAssurance' -notin $CurrentPropertyNames) {
-        # If 'softwareAssurance' doesn't exist as a property, neither does the softwareAssuranceCustomer property within, so add the hashtable containing the intended enrollment state as the value needed to enroll / disenroll.
-        $SACustomerTable = @{
-            softwareAssuranceCustomer = $SACustomerValue;
-        };
-        Write-Verbose -Message "Adding softwareAssurance property and softwareAssurance hashtable set to '$SACustomerValue' as value to object."
-        $GetCurrentState.properties | Add-Member -MemberType NoteProperty -Name 'softwareAssurance' -Value $SACustomerTable -TypeName 'System.Management.Automation.PSCustomObject'
-    }
-    else {
-        # If it does, then look for the 'softwareAssuranceCustomer' property within.
-        Write-Verbose -Message 'softwareAssurance property already exists.'
-
-        [System.Collections.ArrayList]$CurrentsoftwareAssuranceProperties = @()
-        Write-Verbose -Message "Getting current properties under 'softwareAssurance' property."
-        ($GetCurrentState.properties.softwareAssurance | Get-Member | Where-Object -FilterScript { $_.MemberType -eq 'NoteProperty' }).Name | Sort-Object | ForEach-Object -Process {
-            $CurrentsoftwareAssuranceProperties.Add($_) | Out-Null
-        }
-
-        if ('softwareAssuranceCustomer' -notin $CurrentsoftwareAssuranceProperties) {
-            # If softwareAssuranceCustomer does not exist, add it with the intended enrollment state as the value
-            Write-Verbose -Message "Adding softwareAssuranceCustomer property and '$SACustomerValue' as value to object."
-            $GetCurrentState.properties.softwareAssurance | Add-Member -MemberType NoteProperty -Name 'softwareAssuranceCustomer' -Value $SACustomerValue -TypeName 'System.Boolean'
-        }
-        else {
-            # If softwareAssuranceCustomer exists, set it to true
-            $GetCurrentState.properties.softwareAssurance.softwareAssuranceCustomer = $SACustomerValue
-        }
-    }
-
-    # The new properties object shouldn't include those which can't be modified (like 'productProfile') or those which could incorrectly cast the new state (the platform has authority on the 'provisioningState', for instance)
-    [System.Collections.ArrayList]$ExcludedPropertyNames = @(
-        'cloudMetaData',
-        'detectedProperties',
-        'errorDetails',
-        'lastStatusChange',
-        'mssqlDiscovered'
-        'osInstallDate',
-        'productProfile',
-        'provisioningState',
-        'status'
-    )
-    Write-Verbose -Message 'Creating new properties object.'
-    $NewPropertiesState = $GetCurrentState.properties | Select-Object -ExcludeProperty $ExcludedPropertyNames
-
-    Write-Verbose -Message "Creating Hashtable for REST API 'PUT' command."
+    Write-Verbose -Message "Creating Hashtable for REST API: '$RestMethod' method."
     [System.Collections.Hashtable]$RESTBodyTable = @{
         location   = $MachineLocation;
         properties = $NewPropertiesState
@@ -696,7 +637,7 @@ function SetEnrollmentState {
         subscriptionID   = $Machine.subscriptionId;
         resourceGroup    = $Machine.resourceGroup;
         location         = $Machine.location;
-        ResourceID       = $Machine.id;
+        ResourceID       = $MachineResourceID;
         sku              = $MachineSKU;
         plan             = $MachinePlan;
         osSku            = $Machine.osSku;
@@ -710,7 +651,7 @@ function SetEnrollmentState {
         $ErrorActionPreference = 'Continue'
         if ($PSCmdlet.ShouldProcess($MachineName)) {
             Write-Verbose -Message "Creating call to Azure REST API using method: '$RestMethod'."
-            $Response = Invoke-RestMethod -Method $RestMethod -Uri $PUTAbsoluteURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
+            $Response = Invoke-RestMethod -Method $RestMethod -Uri $ChangeURIAbsolute -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
             $ResponseTable.Add('Result', 'Success')
@@ -719,9 +660,8 @@ function SetEnrollmentState {
         }
         else {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
-            # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$PUTAbsoluteURI', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Information -MessageData "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$ChangeURIAbsolute', ContentType - '$ContentType', Body - '$JSONString'."
             Write-Information -MessageData "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
