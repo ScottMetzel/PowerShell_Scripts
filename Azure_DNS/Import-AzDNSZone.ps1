@@ -171,7 +171,7 @@ foreach ($Record in $ImportCSV) {
                         # MX record data format: preference mail-exchanger
                         $MXParts = $RecordData.Split(' ')
                         if ($MXParts.Count -ne 2) {
-                            Write-Error -Message "Invalid MX record data format for record: '$RecordName'. Expected format: 'preference mail-exchanger'."
+                            Write-Error -Message "Invalid MX record data format for record: '$RecordName'. Expected format: 'preference mail-exchanger', e.g. '10 mail.example.com'."
                             throw
                         }
                         $Preference = [System.Int32]$MXParts[0]
@@ -226,7 +226,7 @@ foreach ($Record in $ImportCSV) {
                         # MX record data format: preference mail-exchanger
                         $MXParts = $RecordData.Split(' ')
                         if ($MXParts.Count -ne 2) {
-                            Write-Error -Message "Invalid MX record data format for record: '$RecordName'. Expected format: 'preference mail-exchanger'."
+                            Write-Error -Message "Invalid MX record data format for record: '$RecordName'. Expected format: 'preference mail-exchanger', e.g. '10 mail.example.com'"
                             throw
                         }
                         $Preference = [System.Int32]$MXParts[0]
