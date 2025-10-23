@@ -120,11 +120,26 @@ foreach ($Record in $ImportCSV) {
     [System.Int32]$RecordTTL = $Record.TTL
     [System.String]$RecordData = $Record.Data
 
-    Write-Information -MessageData "Adding record: '$RecordName'. '$i' of: '$TotalRecords'."
+    Write-Information -MessageData "Working on record: '$RecordName'. '$i' of: '$TotalRecords'."
 
     if ($RecordName -in @('', $null) -or [string]::IsNullOrWhiteSpace($RecordName)) {
         Write-Warning -Message "Record Name is empty or null. Using '@' for the zone apex."
         [System.String]$RecordName = '@'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RecordType) -or $RecordType -in @('', $null)) {
+        Write-Error -Message "Record Type is empty or null for record: '$RecordName'. Please check the CSV and try again."
+        throw
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RecordData) -or $RecordData -in @('', $null)) {
+        Write-Error -Message "Record Data is empty or null for record: '$RecordName'. Please check the CSV and try again."
+        throw
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RecordTTL) -or $RecordTTL -in @('', $null)) {
+        Write-Warning -Message "Record TTL is empty or null for record: '$RecordName'. Using default TTL of 3600 seconds."
+        [System.Int32]$RecordTTL = 3600
     }
 
     switch ($DNSZoneType) {
@@ -141,12 +156,15 @@ foreach ($Record in $ImportCSV) {
 
                 switch ($RecordType.ToUpper()) {
                     'A' {
+                        Write-Information -MessageData "Creating A record with IP: $RecordData"
                         $NewPrivateDnsRecordConfig = New-AzPrivateDnsRecordConfig -Ipv4Address $RecordData
                     }
                     'AAAA' {
+                        Write-Information -MessageData "Creating AAAA record with IP: $RecordData"
                         $NewPrivateDnsRecordConfig = New-AzPrivateDnsRecordConfig -Ipv6Address $RecordData
                     }
                     'CNAME' {
+                        Write-Information -MessageData "Creating CNAME record with alias: $RecordData"
                         $NewPrivateDnsRecordConfig = New-AzPrivateDnsRecordConfig -Cname $RecordData
                     }
                     'MX' {
@@ -158,9 +176,11 @@ foreach ($Record in $ImportCSV) {
                         }
                         $Preference = [System.Int32]$MXParts[0]
                         $MailExchanger = $MXParts[1]
+                        Write-Information -MessageData "Creating MX record with preference: $Preference and mail exchanger: $MailExchanger"
                         $NewPrivateDnsRecordConfig = New-AzPrivateDnsRecordConfig -MxPreference $Preference -MxExchange $MailExchanger
                     }
                     'TXT' {
+                        Write-Information -MessageData "Creating TXT record with value: $RecordData"
                         $NewPrivateDnsRecordConfig = New-AzPrivateDnsRecordConfig -Value @($RecordData)
                     }
                     default {
@@ -191,12 +211,15 @@ foreach ($Record in $ImportCSV) {
                 Remove-Variable -Name NewPublicDnsRecordConfig -ErrorAction SilentlyContinue
                 switch ($RecordType.ToUpper()) {
                     'A' {
+                        Write-Information -MessageData "Creating A record with IP: $RecordData"
                         $NewPublicDnsRecordConfig = New-AzDnsRecordConfig -Ipv4Address $RecordData
                     }
                     'AAAA' {
+                        Write-Information -MessageData "Creating AAAA record with IP: $RecordData"
                         $NewPublicDnsRecordConfig = New-AzDnsRecordConfig -Ipv6Address $RecordData
                     }
                     'CNAME' {
+                        Write-Information -MessageData "Creating CNAME record with alias: $RecordData"
                         $NewPublicDnsRecordConfig = New-AzDnsRecordConfig -Cname $RecordData
                     }
                     'MX' {
@@ -208,9 +231,11 @@ foreach ($Record in $ImportCSV) {
                         }
                         $Preference = [System.Int32]$MXParts[0]
                         $MailExchanger = $MXParts[1]
+                        Write-Information -MessageData "Creating MX record with preference: $Preference and mail exchanger: $MailExchanger"
                         $NewPublicDnsRecordConfig = New-AzDnsRecordConfig -Preference $Preference -Exchange $MailExchanger
                     }
                     'TXT' {
+                        Write-Information -MessageData "Creating TXT record with value: $RecordData"
                         $NewPublicDnsRecordConfig = New-AzDnsRecordConfig -Value @($RecordData)
                     }
                     default {
