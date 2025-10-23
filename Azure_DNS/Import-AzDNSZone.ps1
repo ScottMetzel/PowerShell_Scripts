@@ -237,4 +237,5 @@ foreach ($Record in $ImportCSV) {
     }
     $i++
 }
+Write-Information -MessageData 'All done! Exiting.'
 ### END: ADD RECORDS FROM CSV TO AZURE DNS ZONE ###
