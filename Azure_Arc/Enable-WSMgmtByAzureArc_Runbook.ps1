@@ -404,7 +404,7 @@ if (1 -le $MachinesArrayCount) {
         [string]$RestMethod = $HasLP ? 'PATCH' : 'PUT'
 
         ## Enrollment
-        $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -RestMethod $RestMethod -WhatIf
+        $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -RestMethod $RestMethod
 
         $ResponseArray.Add($Response) | Out-Null
 
