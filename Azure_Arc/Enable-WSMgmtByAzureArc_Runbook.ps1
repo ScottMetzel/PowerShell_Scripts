@@ -418,7 +418,7 @@ else {
 ### BEGIN: REPORT ###
 if (0 -lt $ResponseArray.Count) {
     Write-Verbose -Message 'Results: '
-    $ResponseArray | Select-Object -Property 'MachineName', 'Result', 'SoftwareAssurance', 'ResourceID' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
+    $ResponseArray | Select-Object -Property 'MachineName', 'Result', 'SoftwareAssurance', 'ResourceID', 'Method' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
 
     [System.Int64]$LogicalCoreCount = 0
     $ResponseArray | ForEach-Object -Process {
