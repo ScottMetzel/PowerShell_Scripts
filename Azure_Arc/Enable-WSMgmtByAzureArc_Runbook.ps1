@@ -211,7 +211,7 @@ function MachineHasLicenseProfile {
     # Try to GET the licenseProfile from ARM
     $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup `
         -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.Name)/licenseProfiles" `
-        -Name 'default' -ApiVersion '2025-01-13' -ErrorAction Stop
+        -Name 'default' -ApiVersion '2025-01-13' -ErrorAction SilentlyContinue
 
     if (200 -eq $Response.StatusCode) {
         Write-Verbose -Message "Machine: '$($Machine.Name)' has a licenseProfile."
@@ -347,6 +347,7 @@ function EnrollMachine {
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
             $ResponseTable.Add('Result', 'Success')
             $ResponseTable.Add('ErrorMessage', '')
+            $ResponseTable.Add('Method', $RestMethod)
             Write-Verbose -Message "Machine: '$MachineName'. Result: 'Success'."
         }
         else {
@@ -359,6 +360,7 @@ function EnrollMachine {
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
             $ResponseTable.Add('Result', 'N/A - WhatIf')
             $ResponseTable.Add('ErrorMessage', 'N/A - WhatIf')
+            $ResponseTable.Add('Method', $RestMethod)
         }
     }
     catch {
@@ -367,6 +369,7 @@ function EnrollMachine {
         $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
         $ResponseTable.Add('Result', 'Error')
         $ResponseTable.Add('ErrorMessage', $_.ErrorDetails.Message)
+        $ResponseTable.Add('Method', $RestMethod)
     }
 
     $ResponseTable
