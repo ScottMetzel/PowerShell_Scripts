@@ -206,7 +206,7 @@ function MachineHasLicenseProfile {
     Write-Verbose -Message "Running: '$ThisFunctionName'."
 
     # Assume there is no licenseProfile yet
-    [System.Boolean]$HasSA = $false
+    [System.Boolean]$HasLP = $false
 
     # Try to GET the licenseProfile from ARM
     $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup `
@@ -215,11 +215,11 @@ function MachineHasLicenseProfile {
 
     if (200 -eq $Response.StatusCode) {
         Write-Verbose -Message "Machine: '$($Machine.Name)' has a licenseProfile."
-        $HasSA = $true
+        $HasLP = $true
     }
     elseif (404 -eq $Response.StatusCode) {
         Write-Verbose -Message "Machine: '$($Machine.Name)' does not have a licenseProfile."
-        $HasSA = $false
+        $HasLP = $false
     }
     else {
         Write-Warning -Message "Machine: '$($Machine.Name)'. Unexpected response code getting licenseProfile: '$($Response.StatusCode)'."
@@ -227,7 +227,7 @@ function MachineHasLicenseProfile {
     }
 
     # Return result
-    $HasSA
+    $HasLP
 }
 
 function EnrollMachine {
@@ -397,8 +397,8 @@ if (1 -le $MachinesArrayCount) {
 
         Write-Verbose -Message "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
         
-        [bool]$HasSA = MachineHasLicenseProfile -Machine $Machine
-        [string]$RestMethod = $HasSA ? 'PATCH' : 'PUT'
+        [bool]$HasLP = MachineHasLicenseProfile -Machine $Machine
+        [string]$RestMethod = $HasLP ? 'PATCH' : 'PUT'
 
         ## Enrollment
         $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -RestMethod $RestMethod -WhatIf
