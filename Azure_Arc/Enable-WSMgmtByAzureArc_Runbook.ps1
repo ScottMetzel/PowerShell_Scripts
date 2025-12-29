@@ -209,19 +209,21 @@ function MachineHasLicenseProfile {
     [System.Boolean]$HasSA = $false
 
     # Try to GET the licenseProfile from ARM
-    $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.name)/licenseProfiles" -Name "default" -ApiVersion '2025-01-13' -ErrorAction SilentlyContinue | Out-Null
+    $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup `
+        -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.Name)/licenseProfiles" `
+        -Name 'default' -ApiVersion '2025-01-13' -ErrorAction Stop
 
     if (200 -eq $Response.StatusCode) {
-        Write-Verbose -Message "Machine: '$($Machine.name)' has a licenseProfile."
+        Write-Verbose -Message "Machine: '$($Machine.Name)' has a licenseProfile."
         $HasSA = $true
     }
     elseif (404 -eq $Response.StatusCode) {
-        Write-Verbose -Message "Machine: '$($Machine.name)' does not have a licenseProfile."
+        Write-Verbose -Message "Machine: '$($Machine.Name)' does not have a licenseProfile."
         $HasSA = $false
     }
     else {
-        Write-Warning -Message "Machine: '$($Machine.name)'. Unexpected response code getting licenseProfile: '$($Response.StatusCode)'."
-        throw "Unexpected response code getting licenseProfile: '$($Response.StatusCode)'."
+        Write-Warning -Message "Machine: '$($Machine.Name)'. Unexpected response code getting licenseProfile: '$($Response.StatusCode)'."
+        throw "Unexpected response code getting licenseProfile: '$($Response.StatusCode)'. $($_.ErrorDetails.Message)"
     }
 
     # Return result
