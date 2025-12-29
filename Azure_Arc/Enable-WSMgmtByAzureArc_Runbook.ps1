@@ -184,9 +184,7 @@ function DiscoverMachines {
                 $MachinesArray.Add($_) | Out-Null
             }
             [System.Int32]$Skip = $Skip + $TakeFirst
-        } until (
-            0 -eq $SearchAzGraph.Count
-        )
+        } until (250 -gt $SearchAzGraph.Count)
     }
     catch {
         $_
@@ -211,7 +209,7 @@ function MachineHasLicenseProfile {
     [System.Boolean]$HasSA = $false
 
     # Try to GET the licenseProfile from ARM
-    $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.name)/licenseProfiles" -ResourceName "default" -ApiVersion '2025-01-13' -ErrorAction SilentlyContinue | Out-Null
+    $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.name)/licenseProfiles" -Name "default" -ApiVersion '2025-01-13' -ErrorAction SilentlyContinue | Out-Null
 
     if (200 -eq $Response.StatusCode) {
         Write-Verbose -Message "Machine: '$($Machine.name)' has a licenseProfile."
