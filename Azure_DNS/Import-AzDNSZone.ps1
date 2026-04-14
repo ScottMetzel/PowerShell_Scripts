@@ -1,3 +1,4 @@
+[CmdletBinding()]
 param (
     [System.String]$FilePath,
     [ValidateScript(
@@ -11,7 +12,8 @@ param (
         'Private',
         IgnoreCase = $true
     )]
-    [System.String]$DNSZoneType
+    [System.String]$DNSZoneType,
+    [System.Management.switch]$OverwriteExistingRecords
 )
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
