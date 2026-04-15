@@ -169,13 +169,16 @@ while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $outFile   = Join-Path $OutDir "$LATableName-$fileStamp.jsonl"
 
     # Slice via KQL time filter (portable and explicit)
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
     $KQLQuery = @"
 $LATableName
-| where TimeGenerated between (datetime($($FromDateTimeUTCDateTime.ToString('o'))) .. datetime($($NextTimeBlock.ToString('o'))))
+| where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
 | order by TimeGenerated asc
 "@
     #Write-Verbose -Message 'Query to run:'
     #Write-Verbose -Message $KQLQuery
+    Write-Verbose -Message "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     [System.Collections.ArrayList]$ResponseArray = @()
     try {
         $ErrorActionPreference = 'Stop'
@@ -200,7 +203,7 @@ $LATableName
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
-        Write-Verbose -Message "Found: '$QueryCount' results for timeframe from: '$($FromDateTimeUTCDateTime.ToString('o'))' to: '$($NextTimeBlock.ToString('o'))'. Processing results for export."
+        Write-Verbose -Message "Found: '$QueryCount' results. Processing results for export."
         foreach ($Response in $ResponseArray) {
             #Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
             ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $outFile -Append -Encoding utf8
@@ -216,6 +219,8 @@ Write-Verbose -Message 'Done querying. Moving on to export.'
 if ($true -eq $FoundLogs) {
     Write-Verbose -Message 'Logs were found. Creating container name.'
     $ctx = $GetAzStorageAccount.Context
+    [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
+    [System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
     [System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
     [System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
     [System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
