@@ -185,7 +185,6 @@ $LATableName
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -Wait 30 -ErrorAction SilentlyContinue
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
-            $VerbosePreference = 'SilentlyContinue'
             $InvokeQueryResults | ForEach-Object -Process {
                 $ResponseArray.Add($_) | Out-Null
             }
