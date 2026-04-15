@@ -5,6 +5,17 @@ param(
     [Parameter(
         Mandatory = $true
     )]
+    [ValidateScript(
+        {
+            $ObjectGuid = [System.Guid]::empty
+            [System.Guid]::TryParse($_,[System.Management.Automation.PSReference]$ObjectGuid)
+
+        }
+    )]
+    [System.String]$EntraTenantID,
+    [Parameter(
+        Mandatory = $true
+    )]
     [System.String]$LAWResourceID,
     [Parameter(
         Mandatory = $true
@@ -15,29 +26,21 @@ param(
     )]
     [ValidateScript(
         {
-            [System.DateTime]$NewDateTime = New-Object DateTime
-
-            [System.DateTime]::TryParseExact($_, 'yyyyMMddHHmmss',
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::None,
-                [ref]$NewDateTime)
+            [System.DateTime]$NewDateTime = $_
+            $NewDateTime
         }
     )]
-    [System.String]$StartDateTimeUTC,
+    [System.String]$FromDateTimeUTC,
     [Parameter(
         Mandatory = $true
     )]
     [ValidateScript(
         {
-            [System.DateTime]$NewDateTime = New-Object DateTime
-
-            [System.DateTime]::TryParseExact($_, 'yyyyMMddHHmmss',
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::None,
-                [ref]$NewDateTime)
+            [System.DateTime]$NewDateTime = $_
+            $NewDateTime
         }
     )]
-    [System.String]$EndDateTimeUTC,
+    [System.String]$ToDateTimeUTC,
     [System.Int32]$SliceMinutes = 15,
     [Parameter(
         Mandatory = $true
@@ -45,14 +48,17 @@ param(
     [System.String]$StorageAccountResourceID,
     [System.String]$OutDir = '.\la-export',
     [System.Boolean]$RemoveLALogs = $false,
-    [System.String]$DeleteAPIVersion = '2023-09-01'
+    [System.String]$DeleteAPIVersion = '2023-09-01',
+    [System.Boolean]$AsRunbook = $false
 )
 ### START: CONNECT TO AZURE ###
 $InformationPreference = 'Continue'
 $VerbosePreference = 'Continue'
 [System.Collections.ArrayList]$ModulesToImport = @(
     'Az.Accounts',
-    'Az.Network'
+    'Az.OperationalInsights',
+    'Az.Resources',
+    'Az.Storage'
 )
 
 [System.Int32]$i = 1
@@ -84,96 +90,214 @@ Disable-AzContextAutosave -Scope Process
 # Connect to Azure with system-assigned managed identity
 [System.String]$FirstAzTenantID = $EntraTenantID
 [System.String]$FirstAzSubscriptionID = $LASubscriptionID
-[System.String]$VerboseMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
-Write-Verbose -Message $VerboseMessage
-try {
-    $ErrorActionPreference = 'Stop'
-    Connect-AzAccount -Environment 'AzureCloud' -Tenant $FirstAzTenantID -Subscription $FirstAzSubscriptionID -Identity -WarningAction SilentlyContinue
+
+if ($true -eq $AsRunbook) {
+    [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
+    Write-Verbose -Message $AzConnectMessage
+    try {
+        $ErrorActionPreference = 'Stop'
+        Connect-AzAccount -Environment 'AzureCloud' -Tenant $FirstAzTenantID -Subscription $FirstAzSubscriptionID -Identity -WarningAction SilentlyContinue
+    }
+    catch {
+        Write-Error -Message $_
+    }
 }
-catch {
-    Write-Error -Message $_
+else {
+    [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using user credentials to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
+    Write-Verbose -Message $AzConnectMessage
+    try {
+        $ErrorActionPreference = 'Stop'
+        Connect-AzAccount -Environment 'AzureCloud' -Tenant $FirstAzTenantID -Subscription $FirstAzSubscriptionID -WarningAction SilentlyContinue
+    }
+    catch {
+        Write-Error -Message $_
+    }
 }
 ### END: CONNECT TO AZURE ###
 ### START: READ FROM LAW ###
-Write-Verbose -Message 'Getting Workspace'
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAResourceGroupName -Name $LAWorkspaceName
+Write-Verbose -Message "Getting Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
+$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
 
-New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-
-# Loop in fixed windows
-[DateTime]$parsedDate = $null
-[System.DateTime]$StartDateTimeUTCFormatted = Get-Date -Date ([System.DateTime]::TryParse($StartDateTimeUTC,[ref]$parsedDate)) -UFormat yyyyMMddHHmmss
-[System.DateTime]$EndDateTimeUTCFormatted = Get-Date -Date $EndDateTimeUTCFormatted -UFormat yyyyMMddHHmmss
-while ($StartDateTimeUTCFormatted -lt $EndDateTimeUTCFormatted) {
-    $next = [datetime]::SpecifyKind($StartDateTimeUTCFormatted.AddMinutes($SliceMinutes), 'Utc')
-    if ($next -gt $EndDateTimeUTCFormatted) {
-        $next = $EndDateTimeUTCFormatted
-    }
-
-    $fileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $StartDateTimeUTCFormatted, $next
-    $outFile   = Join-Path $OutDir "$LATableName-$fileStamp.jsonl"
-
-    # Slice via KQL time filter (portable and explicit)
-    $kql = @"
-$LATableName
-| where TimeGenerated between (datetime($($StartDateTimeUTCFormatted.ToString('o'))) .. datetime($($next.ToString('o'))))
-| order by TimeGenerated asc
-"@
-    $resp = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $kql
-    #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $kql
-
-    # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
-    [System.Int32]$i = 1
-    [System.Int32]$QueryCount = $resp.Results.Count
-    foreach ($row in $resp.Results) {
-        Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
-        ($row | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $outFile -Append -Encoding utf8
-        $i++
-    }
-
-    Write-Host "Exported slice $StartDateTimeUTCFormatted -> $next to $outFile"
-    $StartDateTimeUTCFormatted = $next
-}
-### END: READ FROM LAW ###
-### START: STORE IN BLOB ###
 [System.Collections.ArrayList]$StorageAccountRIDArray = $StorageAccountResourceID.Split('/')
 
 [System.String]$StorageAccountResourceGroupName = $StorageAccountRIDArray[4]
 [System.String]$StorageAccountName = $StorageAccountRIDArray[-1]
 
 Write-Verbose -Message "Getting storage account: '$StorageAccountName'."
-$ctx = (Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroupName -Name $StorageAccountName).Context
+$GetAzStorageAccount = Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroupName -Name $StorageAccountName -ErrorAction SilentlyContinue
 
-[System.String]$Now = Get-Date -Format FileDateTimeUniversal
-[System.String]$ContainerName = ([System.String]::Concat($LATableName, '_', $Now)).ToLower()
+if ($GetWorkspace) {
+    Write-Verbose -Message "Found Log Analytics Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
+}
+else {
+    Write-Error -Message "Did not find Log Analytics Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
+    throw
+}
 
-New-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+if ($GetAzStorageAccount) {
+    Write-Verbose -Message "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
+}
+else {
+    Write-Error -Message "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
+    throw
+}
 
-Get-ChildItem $OutDir -Filter *.jsonl | ForEach-Object {
-    [System.String]$BlobName = $_.Name
-    Write-Verbose -Message "Uploading: '$BlobName'"
-    Set-AzStorageBlobContent -Context $ctx -Container $ContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
+# Loop in fixed windows
+[System.Boolean]$FoundLogs = $false
+
+Write-Verbose -Message 'Found workspace. Creating output directory.'
+New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+
+[System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
+[System.DateTime]$ToDateTimeUTCDateTime = $ToDateTimeUTC
+
+
+if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
+    Write-Verbose -Message "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
+}
+else {
+    Write-Warning -Message "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
+}
+
+while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
+    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
+    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
+        $NextTimeBlock = $ToDateTimeUTCDateTime
+    }
+
+    $fileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
+    $outFile   = Join-Path $OutDir "$LATableName-$fileStamp.jsonl"
+
+    # Slice via KQL time filter (portable and explicit)
+    $KQLQuery = @"
+$LATableName
+| where TimeGenerated between (datetime($($FromDateTimeUTCDateTime.ToString('o'))) .. datetime($($NextTimeBlock.ToString('o'))))
+| order by TimeGenerated asc
+"@
+    #Write-Verbose -Message 'Query to run:'
+    #Write-Verbose -Message $KQLQuery
+    [System.Collections.ArrayList]$ResponseArray = @()
+    try {
+        $ErrorActionPreference = 'Stop'
+        Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery | ForEach-Object -Process {
+            $ResponseArray.Add($_) | Out-Null
+        }
+    }
+    catch {
+        $_
+        Write-Error -Message 'An error ocurred while executing the query.'
+        throw
+    }
+    #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $KQLQuery
+
+    # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
+    [System.Int32]$i = 1
+    [System.Int32]$QueryCount = $ResponseArray.Count
+    if (0 -lt $QueryCount) {
+        [System.Boolean]$FoundLogs = $true
+        Write-Verbose -Message "Found results for timeframe from: '$($FromDateTimeUTCDateTime.ToString('o'))' to: '$($NextTimeBlock.ToString('o'))'."
+        foreach ($Response in $ResponseArray) {
+            Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
+            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $outFile -Append -Encoding utf8
+            $i++
+            Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $outFile"
+        }
+    }
+    $FromDateTimeUTCDateTime = $NextTimeBlock
+}
+Write-Verbose -Message 'Done querying. Moving on to export.'
+### END: READ FROM LAW ###
+### START: STORE IN BLOB ###
+if ($true -eq $FoundLogs) {
+    Write-Verbose -Message 'Logs were found. Creating container name.'
+    $ctx = $GetAzStorageAccount.Context
+    [System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
+    [System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
+    [System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
+    Write-Verbose -Message "Container will be named: '$ContainerName' for this run."
+    if (Get-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue) {
+        Write-Verbose -Message 'Found a container with the same name. Reusing.'
+    }
+    else {
+        Write-Verbose -Message 'Container does not exist. Attempting to create it.'
+        try {
+            $ErrorActionPreference = 'Stop'
+            New-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+        }
+        catch {
+            $_
+            Write-Error -Message "An error occurred while trying to create container: '$ContainerName'."
+        }
+    }
+
+    Write-Verbose -Message "Getting child items in: '$OutDir'."
+
+    Get-ChildItem $OutDir -Filter *.jsonl | ForEach-Object {
+        [System.String]$BlobName = $_.Name
+        Write-Verbose -Message "Uploading: '$BlobName'"
+        Set-AzStorageBlobContent -Context $ctx -Container $ContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
+    }
+}
+else {
+    Write-Warning -Message 'No log messages found, so not storing data in Azure Storage.'
 }
 ### END: STORE IN BLOB ###
 ### START: DELETE FROM LA ###
-if ($true -eq $RemoveLALogs) {
-    Write-Warning -Message "Will remove Log Analytics logs from table: '$LATableName' between: '$StartDateTimeUTC' and: '$EndDateTimeUTC'."
+if ($true -eq $FoundLogs) {
+    if ($true -eq $RemoveLALogs) {
+        Write-Warning -Message "Will remove Log Analytics logs from table: '$LATableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
+        [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
+        [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
+        [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
+        [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
+        [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LASubscriptionID,'/resourceGroups/', $LAResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LATableName,'/deleteData?api-version=',$DeleteAPIVersion)
 
-    [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LASubscriptionID,'/resourceGroups/', $LAResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LATableName,'/deleteData?api-version=',$DeleteAPIVersion)
+        $DeleteAPIBody = @{
+            filters = @(
+                @{
+                    column   = 'TimeGenerated'
+                    operator = '>'
+                    value    = $DeleteAPIStartTimeFormatted
+                },
+                @{
+                    column   = 'TimeGenerated'
+                    operator = '<'
+                    value    = $DeleteAPIEndTimeFormatted
+                }
+            )
+        } | ConvertTo-Json -Depth 3
 
-    $DeleteAPIBody = @{
-        filters = @(
-            @{
-                column   = 'TimeGenerated'
-                operator = '>'
-                value    = '2024-09-23T00:00:00'
-            },
-            @{
-                column   = 'Resource'
-                operator = '=='
-                value    = 'VM-1'
+        # Make the POST request
+        $Response = Invoke-AzRestMethod -Uri $DeleteAPIURI -Method POST -Payload $DeleteAPIBody
+        #$response = Invoke-WebRequest -Uri $DeleteAPIBody -Method Post -Headers $headers -Body $DeleteAPIURI
+
+        # Check for operation status URL in headers
+        $operationId = $response.Headers['Azure-AsyncOperation']
+        if (-not $operationId) {
+            $operationId = $response.Headers['Location']
+        }
+
+        if ($operationId) {
+            $operationUrl = $operationId[0]  # Take first value
+            Write-Verbose -Message "Polling operation status at: $operationUrl"
+
+            while ($true) {
+                $statusResponse = Invoke-RestMethod -Uri $operationUrl -Headers $headers -Method Get
+                Write-Verbose -Message "Status: $($statusResponse.status)"
+                if ($statusResponse.status -eq 'Succeeded' -or $statusResponse.status -eq 'Failed') {
+                    Write-Verbose -Message "Final status: $($statusResponse.status)"
+                    break
+                }
+                Start-Sleep -Seconds 30 # Check status every 30 seconds
             }
-        )
-    } | ConvertTo-Json -Depth 3
+        }
+        else {
+            Write-Verbose -Message 'No operation tracking URL found. Response body:'
+            $response.Content
+        }
+    }
+}
+else {
+    Write-Warning -Message 'No log messages found, so not removing logs, if enabled.'
 }
 ### END: DELETE FROM LA ###
