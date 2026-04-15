@@ -179,8 +179,13 @@ $LATableName
     [System.Collections.ArrayList]$ResponseArray = @()
     try {
         $ErrorActionPreference = 'Stop'
-        Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery | ForEach-Object -Process {
-            $ResponseArray.Add($_) | Out-Null
+        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -Wait 30 -ErrorAction SilentlyContinue
+        if ($InvokeQuery) {
+            $InvokeQueryResults = $InvokeQuery.Results
+            $VerbosePreference = 'SilentlyContinue'
+            $InvokeQueryResults | ForEach-Object -Process {
+                $ResponseArray.Add($_) | Out-Null
+            }
         }
     }
     catch {
@@ -195,13 +200,13 @@ $LATableName
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
-        Write-Verbose -Message "Found results for timeframe from: '$($FromDateTimeUTCDateTime.ToString('o'))' to: '$($NextTimeBlock.ToString('o'))'."
+        Write-Verbose -Message "Found: '$QueryCount' results for timeframe from: '$($FromDateTimeUTCDateTime.ToString('o'))' to: '$($NextTimeBlock.ToString('o'))'. Processing results for export."
         foreach ($Response in $ResponseArray) {
-            Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
+            #Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
             ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $outFile -Append -Encoding utf8
             $i++
-            Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $outFile"
         }
+        Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $outFile"
     }
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
