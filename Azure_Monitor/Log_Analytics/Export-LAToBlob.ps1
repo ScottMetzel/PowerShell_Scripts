@@ -231,21 +231,36 @@ if ($true -eq $FoundLogs) {
         Write-Verbose -Message 'Container does not exist. Attempting to create it.'
         try {
             $ErrorActionPreference = 'Stop'
+            $VerbosePreference = 'SilentlyContinue'
             New-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+            $VerbosePreference = 'Continue'
         }
         catch {
             $_
             Write-Error -Message "An error occurred while trying to create container: '$ContainerName'."
         }
+        Write-Verbose -Message 'Container created.'
     }
 
     Write-Verbose -Message "Getting child items in: '$OutDir'."
 
-    Get-ChildItem $OutDir -Filter *.jsonl | ForEach-Object {
+    Get-ChildItem -Path $OutDir -Filter *.jsonl | ForEach-Object {
         [System.String]$BlobName = $_.Name
         Write-Verbose -Message "Uploading: '$BlobName'"
-        Set-AzStorageBlobContent -Context $ctx -Container $ContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
+        try {
+            $ErrorActionPreference = 'Stop'
+            $VerbosePreference = 'SilentlyContinue'
+            Set-AzStorageBlobContent -Context $ctx -Container $ContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
+            $VerbosePreference = 'Continue'
+
+        }
+        catch {
+            $_
+            Write-Error -Message "An error occurred while uploading: '$BlobName' to blob storage."
+            throw
+        }
     }
+    Write-Verbose -Message 'Done uploading logs.'
 }
 else {
     Write-Warning -Message 'No log messages found, so not storing data in Azure Storage.'
@@ -305,8 +320,12 @@ if ($true -eq $FoundLogs) {
             $response.Content
         }
     }
+    else {
+        Write-Verbose -Message 'Logs were found, but script was set to not delete any logs from Log Analytics. Moving on.'
+    }
 }
 else {
     Write-Warning -Message 'No log messages found, so not removing logs, if enabled.'
 }
+Write-Verbose -Message 'Exiting!'
 ### END: DELETE FROM LA ###
