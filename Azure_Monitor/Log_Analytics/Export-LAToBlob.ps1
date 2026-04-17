@@ -187,7 +187,7 @@ $LATableName
     [System.Collections.ArrayList]$ResponseArray = @()
     try {
         $ErrorActionPreference = 'Stop'
-        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -Wait 30 -ErrorAction SilentlyContinue
+        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
             $InvokeQueryResults | ForEach-Object -Process {
