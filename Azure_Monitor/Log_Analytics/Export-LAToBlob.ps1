@@ -46,6 +46,11 @@ param(
         Mandatory = $true
     )]
     [System.String]$StorageAccountResourceID,
+    [Parameter(
+        Mandatory = $true
+    )]
+    [ValidatePattern('^[a-z0-9]{3,24}$')]
+    [System.String]$StorageAccountContainerName,
     [System.String]$OutDir = '.\la-export',
     [System.Boolean]$RemoveLALogs = $false,
     [System.String]$DeleteAPIVersion = '2023-09-01',
@@ -222,9 +227,9 @@ if ($true -eq $FoundLogs) {
     [System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
     [System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
     [System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-    [System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
-    Write-Verbose -Message "Container will be named: '$ContainerName' for this run."
-    if (Get-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue) {
+    #[System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
+    Write-Verbose -Message "Container will be named: '$StorageAccountContainerName' for this run."
+    if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
         Write-Verbose -Message 'Found a container with the same name. Reusing.'
     }
     else {
@@ -232,12 +237,12 @@ if ($true -eq $FoundLogs) {
         try {
             $ErrorActionPreference = 'Stop'
             $VerbosePreference = 'SilentlyContinue'
-            New-AzStorageContainer -Name $ContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+            New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
             $VerbosePreference = 'Continue'
         }
         catch {
             $_
-            Write-Error -Message "An error occurred while trying to create container: '$ContainerName'."
+            Write-Error -Message "An error occurred while trying to create container: '$StorageAccountContainerName'."
         }
         Write-Verbose -Message 'Container created.'
     }
@@ -250,7 +255,7 @@ if ($true -eq $FoundLogs) {
         try {
             $ErrorActionPreference = 'Stop'
             $VerbosePreference = 'SilentlyContinue'
-            Set-AzStorageBlobContent -Context $ctx -Container $ContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
+            Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
             $VerbosePreference = 'Continue'
 
         }
