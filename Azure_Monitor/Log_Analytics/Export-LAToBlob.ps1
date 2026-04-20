@@ -223,14 +223,15 @@ $LATableName
             $i++
         }
 
+        # Only create the container if it wasn't created already.
+        $ctx = $GetAzStorageAccount.Context
         if ($false -eq $LogsAlreadyUploaded) {
             [System.Boolean]$LogsAlreadyUploaded = $true
             Write-Verbose -Message 'This is the first time logs have been found in this run. Testing for and creating storage container.'
 
-            Write-Verbose -Message 'Logs were found. Creating container name.'
-            $ctx = $GetAzStorageAccount.Context
-            [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
-            [System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
+            #Write-Verbose -Message 'Logs were found. Creating container name.'
+            #[System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
+            #[System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
             #[System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
             #[System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
             #[System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
@@ -254,6 +255,7 @@ $LATableName
             }
         }
 
+        # Upload logs founs
         Write-Verbose -Message 'Trying to upload logs for this time slice.'
         foreach ($OutFile in $OutFileArray) {
             Write-Verbose -Message "Getting item: '$OutFile' in: '$OutDir'."
@@ -279,13 +281,13 @@ $LATableName
         }
         Write-Verbose -Message 'Done uploading logs.'
 
+        # Remove logs just uploaded
+        Write-Verbose -Message 'Trying to remove the logs which were just uploaded.'
         foreach ($OutFile in $OutFileArray) {
             Write-Verbose -Message "Getting item: '$OutFile' in: '$OutDir'."
             $GetOutFile = Get-Item -Path $OutFile
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
-            # Remove logs just uploaded
-            Write-Verbose -Message 'Trying to remove the logs which were just uploaded.'
             try {
                 $ErrorActionPreference = 'Stop'
                 $VerbosePreference = 'SilentlyContinue'
@@ -297,6 +299,7 @@ $LATableName
 
             }
         }
+        Write-Verbose -Message 'Done removing logs.'
     }
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
