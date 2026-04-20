@@ -188,6 +188,9 @@ $LATableName
     [System.Collections.ArrayList]$ResponseArray = @()
     try {
         $ErrorActionPreference = 'Stop'
+        # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
+        # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
+        # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
@@ -208,7 +211,7 @@ $LATableName
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
-        Write-Verbose -Message "Found: '$QueryCount' results. Processing results for export."
+        Write-Verbose -Message "Found: '$QueryCount' results. Writing out file: '$OutFile' and appending."
 
         [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
         [System.String]$OutFile   = Join-Path $OutDir "$LATableName-$FileStamp.jsonl"
@@ -216,12 +219,11 @@ $LATableName
         foreach ($Response in $ResponseArray) {
             #Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
             ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFile -Append -Encoding utf8
-            Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFile"
-
-            $OutFileArray.Add($OutFile) | Out-Null
-
             $i++
         }
+        Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFile"
+
+        $OutFileArray.Add($OutFile) | Out-Null
 
         # Only create the container if it wasn't created already.
         $ctx = $GetAzStorageAccount.Context
@@ -263,21 +265,28 @@ $LATableName
             [System.String]$OutFileBlobName = $GetOutFile.Name
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
-            Write-Verbose -Message "Uploading: '$OutFileFullname' as blob named: '$OutFileBlobName'"
-
-            # Upload logs
-            try {
-                $ErrorActionPreference = 'Stop'
-                $VerbosePreference = 'SilentlyContinue'
-                Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force | Out-Null
-                $VerbosePreference = 'Continue'
-
-            }
-            catch {
-                $_
-                Write-Error -Message "An error occurred while uploading: '$OutFileBlobName' to blob storage."
+            # Upload logs if blob doesn't already exist. If it does, bail.
+            $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue
+            if ($GetBlob) {
+                Write-Error -Message "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
                 throw
             }
+            else {
+                Write-Verbose -Message "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    $VerbosePreference = 'SilentlyContinue'
+                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force | Out-Null
+                    $VerbosePreference = 'Continue'
+
+                }
+                catch {
+                    $_
+                    Write-Error -Message "An error occurred while uploading: '$OutFileBlobName' to blob storage."
+                    throw
+                }
+            }
+
         }
         Write-Verbose -Message 'Done uploading logs.'
 
