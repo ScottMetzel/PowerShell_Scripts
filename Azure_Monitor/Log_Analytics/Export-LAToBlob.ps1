@@ -20,7 +20,7 @@ param(
     [Parameter(
         Mandatory = $true
     )]
-    [System.String]$LATableName,
+    [System.String]$LAWTableName,
     [Parameter(
         Mandatory = $true
     )]
@@ -41,6 +41,10 @@ param(
         }
     )]
     [System.String]$ToDateTimeUTC,
+    [Parameter(
+        Mandatory = $false
+    )]
+    [System.Boolean]$IsSearchJob = $false,
     [System.Int32]$SliceMinutes = 15,
     [Parameter(
         Mandatory = $true
@@ -49,7 +53,7 @@ param(
     [Parameter(
         Mandatory = $true
     )]
-    [ValidatePattern('^[a-z0-9]{3,24}$')]
+    [ValidatePattern('^[a-z0-9-]{3,63}$')]
     [System.String]$StorageAccountContainerName,
     [System.String]$OutDir = '.\la-export',
     [System.Boolean]$RemoveLALogs = $false,
@@ -88,13 +92,13 @@ Disable-AzContextAutosave -Scope Process
 
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
-[System.String]$LASubscriptionID = $LAWRIDArray[2]
-[System.String]$LAResourceGroupName = $LAWRIDArray[4]
+[System.String]$LAWSubscriptionID = $LAWRIDArray[2]
+[System.String]$LAWResourceGroupName = $LAWRIDArray[4]
 [System.String]$LAWorkspaceName = $LAWRIDArray[-1]
 
 # Connect to Azure with system-assigned managed identity
 [System.String]$FirstAzTenantID = $EntraTenantID
-[System.String]$FirstAzSubscriptionID = $LASubscriptionID
+[System.String]$FirstAzSubscriptionID = $LAWSubscriptionID
 
 if ($true -eq $AsRunbook) {
     [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
@@ -120,8 +124,16 @@ else {
 }
 ### END: CONNECT TO AZURE ###
 ### START: READ FROM LAW ###
-Write-Verbose -Message "Getting Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
+Write-Verbose -Message "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
+
+if ($GetWorkspace) {
+    Write-Verbose -Message "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+}
+else {
+    Write-Error -Message "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+    throw
+}
 
 [System.Collections.ArrayList]$StorageAccountRIDArray = $StorageAccountResourceID.Split('/')
 
@@ -130,14 +142,6 @@ $GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAResourc
 
 Write-Verbose -Message "Getting storage account: '$StorageAccountName'."
 $GetAzStorageAccount = Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroupName -Name $StorageAccountName -ErrorAction SilentlyContinue
-
-if ($GetWorkspace) {
-    Write-Verbose -Message "Found Log Analytics Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
-}
-else {
-    Write-Error -Message "Did not find Log Analytics Workspace in resource group: '$LAResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
 
 if ($GetAzStorageAccount) {
     Write-Verbose -Message "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
@@ -168,6 +172,68 @@ else {
 [System.Boolean]$FoundLogs = $false
 [System.Boolean]$LogsAlreadyUploaded = $false
 
+if ($true -eq $IsSearchJob) {
+    Write-Warning -Message 'Executing a search job for this run. This may lengthen overall runbook execution time.'
+
+    [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
+    [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
+    [System.String]$SearchJobStartDateTimeString = Get-Date -Date $SearchJobStartDateTime -Format 'MM-dd-yyyy HH:mm:ss'
+    [System.String]$SearchJobEndDateTimeString = Get-Date -Date $SearchJobEndDateTime -Format 'MM-dd-yyyy HH:mm:ss'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -Format 'yyyyMMddHHmmss'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
+
+    # Restrict new table name to LA table naming restrictions
+    [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName.Substring(10),'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
+
+    Write-Verbose -Message "Creating a search job table named: '$SearchJobTableName' for starting date time: '$FromDateTimeUTC' and ending: '$ToDateTimeUTC'."
+
+    Write-Verbose -Message "Will try to create a new Search Job table named: '$SearchJobTableName'."
+    try {
+        $ErrorActionPreference = 'Stop'
+        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $SearchJobStartDateTimeString -EndSearchTime $SearchJobEndDateTimeString
+    }
+    catch {
+        $_
+        Write-Error -Message 'An error occurred while creating the Search Job table.'
+        throw
+    }
+
+    # Set the table to query to the name of the search table.
+    [System.String]$LAWTableName = $SearchJobTableName
+    Write-Verbose -Message 'Table name to search is now search job table name.'
+
+    Write-Verbose -Message 'Search job table creation request submitted.'
+
+    # Wait to query until the table's available.
+    [System.Boolean]$SearchJobTableCreated = $false
+    [System.Int32]$SearchJobTimeoutSeconds = 86400
+    [System.Int32]$CurrentSeconds = 0
+    [System.Int32]$SleepSeconds = 10
+
+    while ($false -eq $SearchJobTableCreated) {
+        Write-Verbose -Message "Searching for search job table: '$SearchJobTableName'."
+        $GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
+
+        if ($GetSearchTable) {
+            [System.Boolean]$SearchJobTableCreated = $true
+            Write-Verbose -Message 'Search job table is available!'
+        }
+        else {
+            Write-Verbose -Message 'Search job table not yet available. Waiting 10 seconds.'
+            [System.Int32]$CurrentSeconds = $CurrentSeconds + $SleepSeconds
+            Start-Sleep -Seconds $SleepSeconds
+
+            if ($CurrentSeconds -gt $SearchJobTimeoutSeconds) {
+                Write-Error -Message "Search job timed out after: '$CurrentSeconds' seconds. Please try a smaller search and remember to remove table: '$SearchJobTableName' if it becomes available."
+                throw
+            }
+        }
+    }
+}
+else {
+    Write-Verbose -Message "Not running a search job. Treating logs as if they're in hot tier in the LAW."
+}
+
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
     if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
@@ -177,20 +243,21 @@ while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
+
+    Write-Verbose -Message "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     $KQLQuery = @"
-$LATableName
+$LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
 | order by TimeGenerated asc
 "@
-    #Write-Verbose -Message 'Query to run:'
-    #Write-Verbose -Message $KQLQuery
-    Write-Verbose -Message "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
+
     [System.Collections.ArrayList]$ResponseArray = @()
     try {
         $ErrorActionPreference = 'Stop'
         # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
         # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
         # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
+        Write-Verbose -Message "KQL Query being executed: '$KQLQuery'."
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
@@ -237,7 +304,7 @@ $LATableName
             #[System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
             #[System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
             #[System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-            #[System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
+            #[System.String]$ContainerName = ([System.String]::Concat($LAWTableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
             Write-Verbose -Message "Container will be named: '$StorageAccountContainerName' for this run."
             if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
                 Write-Verbose -Message 'Found a container with the same name. Reusing.'
@@ -318,17 +385,34 @@ $LATableName
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
 Write-Verbose -Message 'Done querying. Moving on.'
-
 ### END: READ FROM LAW ###
+### START: SEARCH JOB TABLE DELETION ###
+if ($true -eq $IsSearchJob) {
+    Write-Verbose -Message 'Search job was executed. Trying to remove table since querying is complete.'
+    try {
+        $ErrorActionPreference = 'Stop'
+        [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$LAWTableName,'?api-version=2021-12-01-preview')
+        Write-Verbose -Message "Table delete string: '$TableDeleteString'."
+
+        Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
+    }
+    catch {
+        $_
+        Write-Error -Message "An error occurred while trying to delete table: '$LAWTableName' using path: '$TableDeleteString'."
+        throw
+    }
+}
+### END: SEARCH JOB TABLE DELETION ###
+
 ### START: DELETE FROM LA ###
 if ($true -eq $FoundLogs) {
     if ($true -eq $RemoveLALogs) {
-        Write-Warning -Message "Will remove Log Analytics logs from table: '$LATableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
+        Write-Warning -Message "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
         [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
         [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
         [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
         [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
-        [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LASubscriptionID,'/resourceGroups/', $LAResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LATableName,'/deleteData?api-version=',$DeleteAPIVersion)
+        [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourceGroups/', $LAWResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LAWTableName,'/deleteData?api-version=',$DeleteAPIVersion)
 
         $DeleteAPIBody = @{
             filters = @(
