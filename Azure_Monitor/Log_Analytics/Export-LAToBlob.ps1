@@ -211,10 +211,11 @@ $LATableName
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
-        Write-Verbose -Message "Found: '$QueryCount' results. Writing out file: '$OutFile' and appending."
-
         [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
         [System.String]$OutFile   = Join-Path $OutDir "$LATableName-$FileStamp.jsonl"
+
+        Write-Verbose -Message "Found: '$QueryCount' results. Writing out file: '$OutFile' and appending."
+
         [System.Collections.ArrayList]$OutFileArray = @()
         foreach ($Response in $ResponseArray) {
             #Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
@@ -266,7 +267,11 @@ $LATableName
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
             # Upload logs if blob doesn't already exist. If it does, bail.
-            $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue
+            Write-Verbose -Message 'Testing if blob already exists.'
+            $VerbosePreference = 'SilentlyContinue'
+            $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue -Verbose:$false
+            $VerbosePreference = 'Continue'
+
             if ($GetBlob) {
                 Write-Error -Message "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
                 throw
@@ -276,7 +281,7 @@ $LATableName
                 try {
                     $ErrorActionPreference = 'Stop'
                     $VerbosePreference = 'SilentlyContinue'
-                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force | Out-Null
+                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false | Out-Null
                     $VerbosePreference = 'Continue'
 
                 }
