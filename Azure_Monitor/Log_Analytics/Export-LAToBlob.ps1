@@ -147,8 +147,8 @@ else {
     throw
 }
 
-# Loop in fixed windows
-[System.Boolean]$FoundLogs = $false
+# Loop in fixed slices of time
+
 
 Write-Verbose -Message 'Found workspace. Creating output directory.'
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
@@ -164,14 +164,15 @@ else {
     Write-Warning -Message "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
 }
 
+# Set these to false until proven true. This drive container creation and uploads.
+[System.Boolean]$FoundLogs = $false
+[System.Boolean]$LogsAlreadyUploaded = $false
+
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
     if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
         $NextTimeBlock = $ToDateTimeUTCDateTime
     }
-
-    $fileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
-    $outFile   = Join-Path $OutDir "$LATableName-$fileStamp.jsonl"
 
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
@@ -208,69 +209,100 @@ $LATableName
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
         Write-Verbose -Message "Found: '$QueryCount' results. Processing results for export."
+
+        [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
+        [System.String]$OutFile   = Join-Path $OutDir "$LATableName-$FileStamp.jsonl"
+        [System.Collections.ArrayList]$OutFileArray = @()
         foreach ($Response in $ResponseArray) {
             #Write-Verbose -Message "Exporting result: '$i' of: '$QueryCount' results."
-            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $outFile -Append -Encoding utf8
+            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFile -Append -Encoding utf8
+            Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFile"
+
+            $OutFileArray.Add($OutFile) | Out-Null
+
             $i++
         }
-        Write-Verbose -Message "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $outFile"
+
+        if ($false -eq $LogsAlreadyUploaded) {
+            [System.Boolean]$LogsAlreadyUploaded = $true
+            Write-Verbose -Message 'This is the first time logs have been found in this run. Testing for and creating storage container.'
+
+            Write-Verbose -Message 'Logs were found. Creating container name.'
+            $ctx = $GetAzStorageAccount.Context
+            [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
+            [System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
+            #[System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
+            #[System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
+            #[System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
+            Write-Verbose -Message "Container will be named: '$StorageAccountContainerName' for this run."
+            if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
+                Write-Verbose -Message 'Found a container with the same name. Reusing.'
+            }
+            else {
+                Write-Verbose -Message 'Container does not exist. Attempting to create it.'
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    $VerbosePreference = 'SilentlyContinue'
+                    New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+                    $VerbosePreference = 'Continue'
+                }
+                catch {
+                    $_
+                    Write-Error -Message "An error occurred while trying to create container: '$StorageAccountContainerName'."
+                }
+                Write-Verbose -Message 'Container created.'
+            }
+        }
+
+        Write-Verbose -Message 'Trying to upload logs for this time slice.'
+        foreach ($OutFile in $OutFileArray) {
+            Write-Verbose -Message "Getting item: '$OutFile' in: '$OutDir'."
+            $GetOutFile = Get-Item -Path $OutFile
+            [System.String]$OutFileBlobName = $GetOutFile.Name
+            [System.String]$OutFileFullname = $GetOutFile.FullName
+
+            Write-Verbose -Message "Uploading: '$OutFileFullname' as blob named: '$OutFileBlobName'"
+
+            # Upload logs
+            try {
+                $ErrorActionPreference = 'Stop'
+                $VerbosePreference = 'SilentlyContinue'
+                Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force | Out-Null
+                $VerbosePreference = 'Continue'
+
+            }
+            catch {
+                $_
+                Write-Error -Message "An error occurred while uploading: '$OutFileBlobName' to blob storage."
+                throw
+            }
+        }
+        Write-Verbose -Message 'Done uploading logs.'
+
+        foreach ($OutFile in $OutFileArray) {
+            Write-Verbose -Message "Getting item: '$OutFile' in: '$OutDir'."
+            $GetOutFile = Get-Item -Path $OutFile
+            [System.String]$OutFileFullname = $GetOutFile.FullName
+
+            # Remove logs just uploaded
+            Write-Verbose -Message 'Trying to remove the logs which were just uploaded.'
+            try {
+                $ErrorActionPreference = 'Stop'
+                $VerbosePreference = 'SilentlyContinue'
+                Write-Verbose -Message "Trying to remove: '$OutFileFullname'."
+                Remove-Item -Path $OutFileFullname -Force | Out-Null
+                $VerbosePreference = 'Continue'
+            }
+            catch {
+
+            }
+        }
     }
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
-Write-Verbose -Message 'Done querying. Moving on to export.'
+Write-Verbose -Message 'Done querying. Moving on.'
+
 ### END: READ FROM LAW ###
-### START: STORE IN BLOB ###
-if ($true -eq $FoundLogs) {
-    Write-Verbose -Message 'Logs were found. Creating container name.'
-    $ctx = $GetAzStorageAccount.Context
-    [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
-    [System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
-    [System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-    [System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-    #[System.String]$ContainerName = ([System.String]::Concat($LATableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
-    Write-Verbose -Message "Container will be named: '$StorageAccountContainerName' for this run."
-    if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
-        Write-Verbose -Message 'Found a container with the same name. Reusing.'
-    }
-    else {
-        Write-Verbose -Message 'Container does not exist. Attempting to create it.'
-        try {
-            $ErrorActionPreference = 'Stop'
-            $VerbosePreference = 'SilentlyContinue'
-            New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
-            $VerbosePreference = 'Continue'
-        }
-        catch {
-            $_
-            Write-Error -Message "An error occurred while trying to create container: '$StorageAccountContainerName'."
-        }
-        Write-Verbose -Message 'Container created.'
-    }
-
-    Write-Verbose -Message "Getting child items in: '$OutDir'."
-
-    Get-ChildItem -Path $OutDir -Filter *.jsonl | ForEach-Object {
-        [System.String]$BlobName = $_.Name
-        Write-Verbose -Message "Uploading: '$BlobName'"
-        try {
-            $ErrorActionPreference = 'Stop'
-            $VerbosePreference = 'SilentlyContinue'
-            Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $_.FullName -Blob $BlobName -Force | Out-Null
-            $VerbosePreference = 'Continue'
-
-        }
-        catch {
-            $_
-            Write-Error -Message "An error occurred while uploading: '$BlobName' to blob storage."
-            throw
-        }
-    }
-    Write-Verbose -Message 'Done uploading logs.'
-}
-else {
-    Write-Warning -Message 'No log messages found, so not storing data in Azure Storage.'
-}
-### END: STORE IN BLOB ###
 ### START: DELETE FROM LA ###
 if ($true -eq $FoundLogs) {
     if ($true -eq $RemoveLALogs) {
