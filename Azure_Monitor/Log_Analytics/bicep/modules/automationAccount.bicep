@@ -15,7 +15,7 @@ resource automationAccount 'Microsoft.Automation/automationAccounts@2023-11-01' 
   }
   properties: {
     sku: {
-      name: 'Basic'
+      name: 'Free'
     }
   }
 }
@@ -27,54 +27,72 @@ output principalId string = automationAccount.identity.principalId
 output automationAccountId string = automationAccount.id
 
 // Runtime Environment with PowerShell 7.6
-resource runtimeEnvironment 'Microsoft.Automation/automationAccounts/runtimeEnvironments@2023-05-15-preview' = {
+resource runtimeEnvironment 'Microsoft.Automation/automationAccounts/runtimeEnvironments@2024-10-23' = {
   parent: automationAccount
-  name: 'ps76-runtime'
+  name: 'PowerShell_7-6'
   location: location
   properties: {
     runtime: {
       language: 'PowerShell'
       version: '7.6'
     }
-    defaultPackages: {
-      'Az.Accounts': 'latest'
-    }
+    defaultPackages: {}
   }
 }
 
 // Gallery packages for the runtime environment
-resource azOperationalInsightsPackage 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2023-05-15-preview' = {
+resource AARuntimeEnvAz 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
+  parent: runtimeEnvironment
+  name: 'Az'
+  properties: {
+    contentLink: {
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az/15.5.0'
+    }
+  }
+}
+
+resource AARuntimeEnvAzAccounts 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
+  parent: runtimeEnvironment
+  name: 'Az.Accounts'
+  properties: {
+    contentLink: {
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az.Accounts/5.3.4'
+    }
+  }
+}
+
+resource AARuntimeEnvAzOperationalInsights 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
   parent: runtimeEnvironment
   name: 'Az.OperationalInsights'
   properties: {
     contentLink: {
-      uri: 'https://www.powershellgallery.com/api/v2/package/Az.OperationalInsights'
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az.OperationalInsights/3.3.0'
     }
   }
 }
 
-resource azResourcesPackage 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2023-05-15-preview' = {
+resource AARuntimeEnvAzResources 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
   parent: runtimeEnvironment
   name: 'Az.Resources'
   properties: {
     contentLink: {
-      uri: 'https://www.powershellgallery.com/api/v2/package/Az.Resources'
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az.Resources/9.0.3'
     }
   }
 }
 
-resource azStoragePackage 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2023-05-15-preview' = {
+resource AARuntimeEnvAzStorage 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
   parent: runtimeEnvironment
   name: 'Az.Storage'
   properties: {
     contentLink: {
-      uri: 'https://www.powershellgallery.com/api/v2/package/Az.Storage'
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az.Storage/9.6.0'
     }
   }
 }
 
 // PowerShell Runbook using the Runtime Environment
-resource runbook 'Microsoft.Automation/automationAccounts/runbooks@2023-11-01' = {
+resource runbook 'Microsoft.Automation/automationAccounts/runbooks@2024-10-23' = {
   parent: automationAccount
   name: 'Export-LAToBlob'
   location: location
@@ -85,5 +103,6 @@ resource runbook 'Microsoft.Automation/automationAccounts/runbooks@2023-11-01' =
     }
     logVerbose: true
     logProgress: true
+    runtimeEnvironment: runtimeEnvironment.name
   }
 }
