@@ -448,7 +448,7 @@ $LAWTableName
             [System.Boolean]$LogsAlreadyUploaded = $true
             Write-ToLog -Stream Information -MessageData 'This is the first time logs have been found in this run.'
 
-            [System.String]$OutDirFullPath = Join-Path -Path 'D:\Home' -ChildPath $OutDirName
+            [System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
 
             Write-ToLog -Stream Information -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
             if (-not (Test-Path -Path $OutDirFullPath)) {
