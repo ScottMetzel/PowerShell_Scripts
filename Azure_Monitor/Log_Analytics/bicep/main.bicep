@@ -24,6 +24,16 @@ param runbookScriptUri string = 'https://raw.githubusercontent.com/ScottMetzel/P
 @maxValue(10)
 param instanceCount int = 10
 
+@description('The name of the storage account to create for storing logs. Must be globally unique across Azure.')
+@minLength(3)
+@maxLength(24)
+param storageAccountName string
+
+@description('The name of the blob container to create within the storage account.')
+@minLength(3)
+@maxLength(63)
+param containerName string
+
 // Role definition IDs (built-in)
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 var storageAccountContributorRoleId = '17d1049b-9a84-46fb-8f53-869881c3d3ab'
@@ -36,13 +46,28 @@ resource resourceGroups 'Microsoft.Resources/resourceGroups@2025-04-01' = [
   }
 ]
 
-module automationDeployments './modules/automationAccount.bicep' = [
+module functionAppDeployments './modules/functionApp.bicep' = [
   for i in range(1, instanceCount): {
     scope: resourceGroups[i - 1]
     params: {
       location: location
-      automationAccountName: '${environmentName}-AA-${baseName}-${padLeft(i, 2, '0')}'
-      runbookScriptUri: runbookScriptUri
+      functionAppName: '${environmentName}-FA-${baseName}-${padLeft(i, 2, '0')}'
+      appServicePlanName: '${environmentName}-ASP-${baseName}-${padLeft(i, 2, '0')}'
+      applicationInsightsName: '${environmentName}-AI-${baseName}-${padLeft(i, 2, '0')}'
+      storageAccountName: toLower(storageAccountName)
+      scriptUri: runbookScriptUri
+    }
+  }
+]
+
+module storageAccountDeployments './modules/storageAccount.bicep' = [
+  for i in range(1, instanceCount): {
+    scope: resourceGroups[i - 1]
+    params: {
+      location: location
+      storageAccountName: toLower(storageAccountName)
+      containerName: containerName
+      allowStorageAccountKeyAccess: false
     }
   }
 ]
@@ -50,9 +75,9 @@ module automationDeployments './modules/automationAccount.bicep' = [
 // Subscription-scoped role assignments for each Automation Account's managed identity
 resource logAnalyticsReaderAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   for i in range(1, instanceCount): {
-    name: guid(subscription().id, '${environmentName}-AA-${baseName}-${padLeft(i, 2, '0')}', logAnalyticsReaderRoleId)
+    name: guid(subscription().id, '${environmentName}-FA-${baseName}-${padLeft(i, 2, '0')}', logAnalyticsReaderRoleId)
     properties: {
-      principalId: automationDeployments[i - 1].outputs.principalId
+      principalId: functionAppDeployments[i - 1].outputs.principalId
       roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', logAnalyticsReaderRoleId)
       principalType: 'ServicePrincipal'
     }
@@ -63,11 +88,11 @@ resource storageAccountContributorAssignments 'Microsoft.Authorization/roleAssig
   for i in range(1, instanceCount): {
     name: guid(
       subscription().id,
-      '${environmentName}-AA-${baseName}-${padLeft(i, 2, '0')}',
+      '${environmentName}-FA-${baseName}-${padLeft(i, 2, '0')}',
       storageAccountContributorRoleId
     )
     properties: {
-      principalId: automationDeployments[i - 1].outputs.principalId
+      principalId: functionAppDeployments[i - 1].outputs.principalId
       roleDefinitionId: subscriptionResourceId(
         'Microsoft.Authorization/roleDefinitions',
         storageAccountContributorRoleId
@@ -81,11 +106,11 @@ resource storageBlobDataContributorAssignments 'Microsoft.Authorization/roleAssi
   for i in range(1, instanceCount): {
     name: guid(
       subscription().id,
-      '${environmentName}-AA-${baseName}-${padLeft(i, 2, '0')}',
+      '${environmentName}-FA-${baseName}-${padLeft(i, 2, '0')}',
       storageBlobDataContributorRoleId
     )
     properties: {
-      principalId: automationDeployments[i - 1].outputs.principalId
+      principalId: functionAppDeployments[i - 1].outputs.principalId
       roleDefinitionId: subscriptionResourceId(
         'Microsoft.Authorization/roleDefinitions',
         storageBlobDataContributorRoleId

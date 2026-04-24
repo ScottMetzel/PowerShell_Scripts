@@ -96,10 +96,10 @@ Disable-AzContextAutosave -Scope Process
 [System.String]$LAWResourceGroupName = $LAWRIDArray[4]
 [System.String]$LAWorkspaceName = $LAWRIDArray[-1]
 
-# Connect to Azure with system-assigned managed identity
 [System.String]$FirstAzTenantID = $EntraTenantID
 [System.String]$FirstAzSubscriptionID = $LAWSubscriptionID
 
+### START: CONNECT TO AZURE ###
 if ($true -eq $AsRunbook) {
     [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
     Write-Verbose -Message $AzConnectMessage
@@ -150,9 +150,6 @@ else {
     Write-Error -Message "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
     throw
 }
-
-# Loop in fixed slices of time
-
 
 Write-Verbose -Message 'Found workspace. Creating output directory.'
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
@@ -234,6 +231,7 @@ else {
     Write-Verbose -Message "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
 
+# Loop in fixed slices of time
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
     if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
@@ -403,7 +401,6 @@ if ($true -eq $IsSearchJob) {
     }
 }
 ### END: SEARCH JOB TABLE DELETION ###
-
 ### START: DELETE FROM LA ###
 if ($true -eq $FoundLogs) {
     if ($true -eq $RemoveLALogs) {
