@@ -19,7 +19,9 @@ param(
     $TriggerMetadata
 )
 ### START: FUNCTIONS ###
-Write-Information -MessageData 'Loading functions...'
+$VerbosePreference = 'SilentlyContinue'
+$InformationPreference = 'Continue'
+Write-Verbose -Message 'Loading functions...'
 function Write-ToLog {
     param (
         [ValidateSet(
@@ -45,7 +47,6 @@ function Write-ToLog {
             Write-Error -Message $MessageData
         }
         'Information' {
-            $InformationPreference = 'Continue'
             Write-Information -MessageData $MessageData
         }
         'Progress' {
@@ -63,10 +64,10 @@ function Write-ToLog {
     }
 }
 
-Write-ToLog -Stream 'Information' -MessageData 'Finished loading functions.'
+Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
-Write-ToLog -Stream 'Information' -MessageData 'Deriving variables from request parameters...'
+Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
 # Entra Tenant ID
 [System.String]$EntraTenantID = $Request.Query.EntraTenantID
@@ -157,7 +158,7 @@ if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
 
 if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
     [System.Int32]$SliceMinutes = 15
-    Write-ToLog -Stream Warning -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceMinutes' minutes."
+    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceMinutes' minutes."
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceMinutes'."
 
@@ -203,7 +204,7 @@ else {
 
 if ($OutDirName -in @('', $null)) {
     [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream Warning -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
+    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
 }
 else {
     [System.String]$OutDirName = $Request.Body.OutDir
@@ -242,7 +243,7 @@ Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIV
 [System.String]$LAWResourceGroupName = $LAWRIDArray[4]
 [System.String]$LAWorkspaceName = $LAWRIDArray[-1]
 
-Write-ToLog -Stream 'Information' -MessageData 'Done deriving variables from request parameters.'
+Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request parameters.'
 
 ### END: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 ### START: SETUP & MODULE IMPORT ###
@@ -258,49 +259,48 @@ $InformationPreference = 'Continue'
 [System.Int32]$i = 1
 [System.Int32]$ModulesToImportCount = $ModulesToImport.Count
 
-Write-ToLog -Stream Information -MessageData 'Starting to import PowerShell modules.'
+Write-ToLog -Stream 'Information' -MessageData 'Starting to import PowerShell modules.'
 foreach ($Module in $ModulesToImport) {
-    Write-ToLog -Stream Information -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
     try {
         $ErrorActionPreference = 'Stop'
         Import-Module -Name $Module | Out-Null
     }
     catch {
         $_
-        Write-ToLog -Stream Error -MessageData "An error occurred while importing module: '$Module'."
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while importing module: '$Module'."
         throw
     }
-    Write-ToLog -Stream Information -MessageData "Successfully imported module: '$Module'."
+    Write-ToLog -Stream 'Verbose' -MessageData "Successfully imported module: '$Module'."
     $i++
 }
 
-Write-ToLog -Stream Information -MessageData 'Finished importing PowerShell modules.'
-$VerbosePreference = 'Continue'
+Write-ToLog -Stream 'Information' -MessageData 'Finished importing PowerShell modules.'
 ### END: SETUP & MODULE IMPORT ###
 ### START: CONNECT TO AZURE ###
 # Ensures you do not inherit an AzContext in your runbook
-Write-ToLog -Stream Information -MessageData 'Disabling Azure context autosave.'
+Write-ToLog -Stream 'Verbose' -MessageData 'Disabling Azure context autosave.'
 Disable-AzContextAutosave -Scope Process
 
 [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $EntraTenantID, ''' and Azure Subscription ID: ''', $LAWSubscriptionID, '''.')
-Write-ToLog -Stream Information -MessageData $AzConnectMessage
+Write-ToLog -Stream 'Information' -MessageData $AzConnectMessage
 try {
     $ErrorActionPreference = 'Stop'
     Connect-AzAccount -Environment 'AzureCloud' -Tenant $EntraTenantID -Subscription $LAWSubscriptionID -Identity -WarningAction SilentlyContinue
 }
 catch {
-    Write-ToLog -Stream Error -MessageData $_
+    Write-ToLog -Stream 'Error' -MessageData $_
 }
 ### END: CONNECT TO AZURE ###
 ### START: READ FROM LAW ###
-Write-ToLog -Stream Information -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
 $GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
 
 if ($GetWorkspace) {
-    Write-ToLog -Stream Information -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+    Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
 }
 else {
-    Write-ToLog -Stream Error -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
+    Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
     throw
 }
 
@@ -309,30 +309,30 @@ else {
 [System.String]$StorageAccountResourceGroupName = $StorageAccountRIDArray[4]
 [System.String]$StorageAccountName = $StorageAccountRIDArray[-1]
 
-Write-ToLog -Stream Information -MessageData "Getting storage account: '$StorageAccountName'."
+Write-ToLog -Stream 'Verbose' -MessageData "Getting storage account: '$StorageAccountName'."
 $GetAzStorageAccount = Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroupName -Name $StorageAccountName -ErrorAction SilentlyContinue
 
 if ($GetAzStorageAccount) {
-    Write-ToLog -Stream Information -MessageData "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
+    Write-ToLog -Stream 'Information' -MessageData "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
     # Create storage account context for use with blob operations later
     $ctx = $GetAzStorageAccount.Context
 }
 else {
-    Write-ToLog -Stream Error -MessageData "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
+    Write-ToLog -Stream 'Error' -MessageData "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
     throw
 }
 
 [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
 [System.DateTime]$ToDateTimeUTCDateTime = $ToDateTimeUTC
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    Write-ToLog -Stream Information -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
+    Write-ToLog -Stream 'Verbose' -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
 }
 else {
-    Write-ToLog -Stream Warning -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
+    Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
 }
 
 if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream Warning -MessageData 'Executing a search job for this run. This may lengthen overall runbook execution time.'
+    Write-ToLog -Stream 'Warning' -MessageData 'Executing a search job for this run. This may lengthen overall runbook execution time.'
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
@@ -344,24 +344,22 @@ if ($true -eq $IsSearchJob) {
     # Restrict new table name to LA table naming restrictions
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName.Substring(10),'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
-    Write-ToLog -Stream Information -MessageData "Creating a search job table named: '$SearchJobTableName' for starting date time: '$FromDateTimeUTC' and ending: '$ToDateTimeUTC'."
+    Write-ToLog -Stream 'Information' -MessageData "Creating a search job table named: '$SearchJobTableName' for starting date time: '$FromDateTimeUTC' and ending: '$ToDateTimeUTC'."
 
-    Write-ToLog -Stream Information -MessageData "Will try to create a new Search Job table named: '$SearchJobTableName'."
     try {
         $ErrorActionPreference = 'Stop'
         New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $SearchJobStartDateTimeString -EndSearchTime $SearchJobEndDateTimeString
+        Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
     }
     catch {
         $_
-        Write-ToLog -Stream Error -MessageData 'An error occurred while creating the Search Job table.'
+        Write-ToLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
         throw
     }
 
     # Set the table to query to the name of the search table.
     [System.String]$LAWTableName = $SearchJobTableName
-    Write-ToLog -Stream Information -MessageData 'Table name to search is now search job table name.'
-
-    Write-ToLog -Stream Information -MessageData 'Search job table creation request submitted.'
+    Write-ToLog -Stream 'Verbose' -MessageData 'Table name to search is now search job table name.'
 
     # Wait to query until the table's available.
     [System.Boolean]$SearchJobTableCreated = $false
@@ -370,32 +368,40 @@ if ($true -eq $IsSearchJob) {
     [System.Int32]$SleepSeconds = 10
 
     while ($false -eq $SearchJobTableCreated) {
-        Write-ToLog -Stream Information -MessageData "Searching for search job table: '$SearchJobTableName'."
+        Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
         $GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
 
         if ($GetSearchTable) {
             [System.Boolean]$SearchJobTableCreated = $true
-            Write-ToLog -Stream Information -MessageData 'Search job table is available!'
+            Write-ToLog -Stream 'Information' -MessageData 'Search job table is available!'
         }
         else {
-            Write-ToLog -Stream Information -MessageData 'Search job table not yet available. Waiting 10 seconds.'
+            Write-ToLog -Stream 'Information' -MessageData 'Search job table not yet available. Waiting 10 seconds.'
             [System.Int32]$CurrentSeconds = $CurrentSeconds + $SleepSeconds
             Start-Sleep -Seconds $SleepSeconds
 
             if ($CurrentSeconds -gt $SearchJobTimeoutSeconds) {
-                Write-ToLog -Stream Error -MessageData "Search job timed out after: '$CurrentSeconds' seconds. Please try a smaller search and remember to remove table: '$SearchJobTableName' if it becomes available."
+                Write-ToLog -Stream 'Error' -MessageData "Search job timed out after: '$CurrentSeconds' seconds. Please try a smaller search and remember to remove table: '$SearchJobTableName' if it becomes available."
                 throw
             }
         }
     }
 }
 else {
-    Write-ToLog -Stream Information -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
+    Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
 
 # Set these to false until proven true. These drive container creation and uploads.
 [System.Boolean]$FoundLogs = $false
 [System.Boolean]$LogsAlreadyUploaded = $false
+
+## Respond to the HTTP request while continuing to process the log export in the background.
+# Associate values to output bindings by calling 'Push-OutputBinding'.
+[System.String]$BodyMessage = 'Log export request accepted and processing in the background.'
+Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+        StatusCode = [HttpStatusCode]::OK
+        Body       = $BodyMessage
+    })
 
 # Loop in fixed slices of time
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
@@ -408,7 +414,7 @@ while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
-    Write-ToLog -Stream Information -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
+    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -421,7 +427,7 @@ $LAWTableName
         # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
         # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
         # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
-        Write-ToLog -Stream Information -MessageData "KQL Query being executed: '$KQLQuery'."
+        Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
@@ -432,7 +438,7 @@ $LAWTableName
     }
     catch {
         $_
-        Write-ToLog -Stream Error -MessageData 'An error ocurred while executing the query.'
+        Write-ToLog -Stream 'Error' -MessageData 'An error ocurred while executing the query.'
         throw
     }
     #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $KQLQuery
@@ -446,47 +452,45 @@ $LAWTableName
         # Only create the temporary upload folder and blob storage container if it wasn't created already.
         if ($false -eq $LogsAlreadyUploaded) {
             [System.Boolean]$LogsAlreadyUploaded = $true
-            Write-ToLog -Stream Information -MessageData 'This is the first time logs have been found in this run.'
+            Write-ToLog -Stream 'Verbose' -MessageData 'This is the first time logs have been found in this run.'
 
             [System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
 
-            Write-ToLog -Stream Information -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
+            Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
             if (-not (Test-Path -Path $OutDirFullPath)) {
-                Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
+                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
                 try {
                     $ErrorActionPreference = 'Stop'
                     New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
-                    Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
+                    Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
                 }
                 catch {
                     $_
-                    Write-ToLog -Stream Error -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
+                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
                     throw
                 }
             }
             else {
-                Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
+                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
             }
 
-            Write-ToLog -Stream Information -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
-            Write-ToLog -Stream Information -MessageData "Checking for existence of container: '$StorageAccountContainerName'."
+            Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
+            Write-ToLog -Stream 'Information' -MessageData "Checking for existence of container: '$StorageAccountContainerName'."
 
             if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
-                Write-ToLog -Stream Information -MessageData 'Found a container with the same name. Reusing.'
+                Write-ToLog -Stream 'Verbose' -MessageData 'Found a container with the same name. Reusing.'
             }
             else {
-                Write-ToLog -Stream Information -MessageData 'Container does not exist. Attempting to create it.'
+                Write-ToLog -Stream 'Verbose' -MessageData 'Container does not exist. Attempting to create it.'
                 try {
                     $ErrorActionPreference = 'Stop'
-                    $VerbosePreference = 'SilentlyContinue'
                     New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
-                    $VerbosePreference = 'Continue'
                 }
                 catch {
                     $_
-                    Write-ToLog -Stream Error -MessageData "An error occurred while trying to create container: '$StorageAccountContainerName'."
+                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create container: '$StorageAccountContainerName'."
                 }
-                Write-ToLog -Stream Information -MessageData 'Container created.'
+                Write-ToLog -Stream 'Information' -MessageData 'Container created.'
             }
         }
 
@@ -494,105 +498,97 @@ $LAWTableName
         [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
         [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
 
-        Write-ToLog -Stream Information -MessageData "Found: '$QueryCount' results."
-        Write-ToLog -Stream Information -MessageData "Attempting to create temporary output file: '$OutFileFullPath'."
+        Write-ToLog -Stream 'Information' -MessageData "Found: '$QueryCount' results. Attempting to create temporary output file: '$OutFileFullPath'."
         try {
             $ErrorActionPreference = 'Stop'
             New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force
-            Write-ToLog -Stream Information -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
+            Write-ToLog -Stream 'Verbose' -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
         }
         catch {
             $_
-            Write-ToLog -Stream Error -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
+            Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
             throw
         }
 
-        Write-ToLog -Stream Information -MessageData "Writing out file: '$OutFileFullPath' and appending."
+        Write-ToLog -Stream 'Verbose' -MessageData "Writing out file: '$OutFileFullPath' and appending."
         [System.Collections.ArrayList]$OutFileArray = @()
         foreach ($Response in $ResponseArray) {
-            #Write-ToLog -Stream Information -MessageData "Exporting result: '$i' of: '$QueryCount' results."
+            #Write-ToLog -Stream 'Information' -MessageData "Exporting result: '$i' of: '$QueryCount' results."
             ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8
             $i++
         }
-        Write-ToLog -Stream Information -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
+        Write-ToLog -Stream 'Information' -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
 
         $OutFileArray.Add($OutFileFullPath) | Out-Null
 
         # Upload logs found in this time slice to blob storage
-        Write-ToLog -Stream Information -MessageData 'Trying to upload logs for this time slice.'
+        Write-ToLog -Stream 'Information' -MessageData 'Trying to upload logs for this time slice.'
         foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
+            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
             $GetOutFile = Get-Item -Path $OutFile
             [System.String]$OutFileBlobName = $GetOutFile.Name
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
             # Upload logs if blob doesn't already exist. If it does, bail.
-            Write-ToLog -Stream Information -MessageData 'Testing if blob already exists.'
-            $VerbosePreference = 'SilentlyContinue'
+            Write-ToLog -Stream 'Verbose' -MessageData 'Testing if blob already exists.'
             $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue -Verbose:$false
-            $VerbosePreference = 'Continue'
 
             if ($GetBlob) {
-                Write-ToLog -Stream Error -MessageData "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
+                Write-ToLog -Stream 'Error' -MessageData "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
                 throw
             }
             else {
-                Write-ToLog -Stream Information -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
+                Write-ToLog -Stream 'Verbose' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
                 try {
                     $ErrorActionPreference = 'Stop'
-                    $VerbosePreference = 'SilentlyContinue'
                     Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false | Out-Null
-                    $VerbosePreference = 'Continue'
-
+                    Write-ToLog -Stream 'Information' -MessageData "Successfully uploaded file: '$OutFileFullname' as blob named: '$OutFileBlobName'."
                 }
                 catch {
                     $_
-                    Write-ToLog -Stream Error -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
+                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
                     throw
                 }
             }
-
         }
-        Write-ToLog -Stream Information -MessageData 'Done uploading logs.'
-
         # Remove logs just uploaded
-        Write-ToLog -Stream Information -MessageData 'Trying to remove the logs which were just uploaded.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'Trying to remove the logs which were just uploaded.'
         foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
+            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
             $GetOutFile = Get-Item -Path $OutFile
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
             try {
                 $ErrorActionPreference = 'Stop'
-                $VerbosePreference = 'SilentlyContinue'
-                Write-ToLog -Stream Information -MessageData "Trying to remove: '$OutFileFullname'."
+                Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
                 Remove-Item -Path $OutFileFullname -Force | Out-Null
-                $VerbosePreference = 'Continue'
+                Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
             }
             catch {
-
+                $_
+                Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
             }
         }
-        Write-ToLog -Stream Information -MessageData 'Done removing logs.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
 
-Write-ToLog -Stream Information -MessageData 'Done querying. Moving on.'
+Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
 ### END: READ FROM LAW ###
 ### START: SEARCH JOB TABLE DELETION ###
 if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream Information -MessageData 'Search job was executed. Trying to remove table since querying is complete.'
+    Write-ToLog -Stream 'Information' -MessageData 'Search job was executed. Trying to remove table since querying is complete.'
     try {
         $ErrorActionPreference = 'Stop'
         [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$LAWTableName,'?api-version=2021-12-01-preview')
-        Write-ToLog -Stream Information -MessageData "Table delete string: '$TableDeleteString'."
+        Write-ToLog -Stream 'Verbose' -MessageData "Table delete string: '$TableDeleteString'."
 
         Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
     }
     catch {
         $_
-        Write-ToLog -Stream Error -MessageData "An error occurred while trying to delete table: '$LAWTableName' using path: '$TableDeleteString'."
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$LAWTableName' using path: '$TableDeleteString'."
         throw
     }
 }
@@ -600,7 +596,7 @@ if ($true -eq $IsSearchJob) {
 ### START: DELETE FROM LA ###
 if ($true -eq $FoundLogs) {
     if ($true -eq $RemoveLALogs) {
-        Write-ToLog -Stream Warning -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
+        Write-ToLog -Stream 'Warning' -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
         [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
         [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
         [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
@@ -634,38 +630,32 @@ if ($true -eq $FoundLogs) {
 
         if ($operationId) {
             $operationUrl = $operationId[0]  # Take first value
-            Write-ToLog -Stream Information -MessageData "Polling operation status at: $operationUrl"
+            Write-ToLog -Stream 'Verbose' -MessageData "Polling operation status at: $operationUrl"
 
             while ($true) {
                 $statusResponse = Invoke-RestMethod -Uri $operationUrl -Headers $headers -Method Get
-                Write-ToLog -Stream Information -MessageData "Status: $($statusResponse.status)"
+                Write-ToLog -Stream 'Verbose' -MessageData "Status: $($statusResponse.status)"
                 if ($statusResponse.status -eq 'Succeeded' -or $statusResponse.status -eq 'Failed') {
-                    Write-ToLog -Stream Information -MessageData "Final status: $($statusResponse.status)"
+                    Write-ToLog -Stream 'Verbose' -MessageData "Final status: $($statusResponse.status)"
                     break
                 }
                 Start-Sleep -Seconds 30 # Check status every 30 seconds
             }
         }
         else {
-            Write-ToLog -Stream Information -MessageData 'No operation tracking URL found. Response body:'
+            Write-ToLog -Stream 'Verbose' -MessageData 'No operation tracking URL found. Response body:'
             $response.Content
         }
     }
     else {
-        Write-ToLog -Stream Information -MessageData 'Logs were found, but script was set to not delete any logs from Log Analytics. Moving on.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'Logs were found, but script was set to not delete any logs from Log Analytics. Moving on.'
     }
 }
 else {
-    Write-ToLog -Stream Warning -MessageData 'No log messages found, so not removing logs, if enabled.'
+    Write-ToLog -Stream 'Warning' -MessageData 'No log messages found, so not removing logs, if enabled.'
 }
 ### END: DELETE FROM LA ###
 
 #### KEEP BELOW ####
 [System.String]$BodyMessage = 'Exiting!'
-Write-ToLog -Stream Information -MessageData $BodyMessage
-
-# Associate values to output bindings by calling 'Push-OutputBinding'.
-Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-        StatusCode = [HttpStatusCode]::OK
-        Body       = $BodyMessage
-    })
+Write-ToLog -Stream 'Information' -MessageData $BodyMessage
