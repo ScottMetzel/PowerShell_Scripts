@@ -67,6 +67,7 @@ Write-ToLog -Stream 'Information' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Information' -MessageData 'Deriving variables from request parameters...'
+
 # Entra Tenant ID
 [System.String]$EntraTenantID = $Request.Query.EntraTenantID
 if (-not $EntraTenantID) {
@@ -149,15 +150,15 @@ else {
 Write-ToLog -Stream 'Information' -MessageData "Is Search Job: '$IsSearchJob'."
 
 # Slice Minutes (bite size, like Pizza King)
-[System.Int32]$SliceMinutes = [System.Convert]::ToInt32($Request.Query.SliceMinutes)
+[System.Int32]$SliceMinutes = $Request.Query.SliceMinutes
 if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
-    [System.Int32]$SliceMinutes = 15
-    Write-ToLog -Stream Warning -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters. Defaulting to: '$SliceMinutes' minutes."
-}
-else {
-    [System.Int32]$SliceMinutes = [System.Convert]::ToInt32($Request.Body.SliceMinutes)
+    [System.Int32]$SliceMinutes = $Request.Body.SliceMinutes
 }
 
+if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
+    [System.Int32]$SliceMinutes = 15
+    Write-ToLog -Stream Warning -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceMinutes' minutes."
+}
 Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceMinutes'."
 
 # Storage Account Resource ID
@@ -188,27 +189,27 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
 }
 
-# Log Output local directory (within the Function App)
-[System.String]$OutDir = $Request.Query.OutDir
-if (-not $OutDir) {
-    [System.String]$OutDir = $Request.Body.OutDir
+# Log Output local directory name (within the Function App)
+[System.String]$OutDirName = $Request.Query.OutDir
+if (-not $OutDirName) {
+    [System.String]$OutDirName = $Request.Body.OutDir
 }
-elseif ($OutDir.Length -lt 1) {
-    [System.String]$OutDir = '.\la-export'
-}
-else {
-    [System.String]$OutDir = '.\la-export'
-}
-
-if ($OutDir -in @('', $null)) {
-    [System.String]$OutDir = '.\la-export'
-    Write-ToLog -Stream Warning -MessageData "Output directory was not provided in the query parameters or the request body. Defaulting to: '$OutDir'."
+elseif ($OutDirName.Length -lt 1) {
+    [System.String]$OutDirName = 'la-export'
 }
 else {
-    [System.String]$OutDir = $Request.Body.OutDir
+    [System.String]$OutDirName = 'la-export'
 }
 
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory within Function App: '$OutDir'."
+if ($OutDirName -in @('', $null)) {
+    [System.String]$OutDirName = 'la-export'
+    Write-ToLog -Stream Warning -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
+}
+else {
+    [System.String]$OutDirName = $Request.Body.OutDir
+}
+
+Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
 
 # Remove the exported logs from Log Analytics (careful with this)
 [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
@@ -241,8 +242,6 @@ Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIV
 [System.String]$LAWResourceGroupName = $LAWRIDArray[4]
 [System.String]$LAWorkspaceName = $LAWRIDArray[-1]
 
-[System.String]$FirstAzTenantID = $EntraTenantID
-[System.String]$FirstAzSubscriptionID = $LAWSubscriptionID
 Write-ToLog -Stream 'Information' -MessageData 'Done deriving variables from request parameters.'
 
 ### END: DERIVE VARIABLES FROM REQUEST PARAMETER ###
@@ -283,27 +282,14 @@ $VerbosePreference = 'Continue'
 Write-ToLog -Stream Information -MessageData 'Disabling Azure context autosave.'
 Disable-AzContextAutosave -Scope Process
 
-if ($true -eq $AsRunbook) {
-    [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
-    Write-ToLog -Stream Information -MessageData $AzConnectMessage
-    try {
-        $ErrorActionPreference = 'Stop'
-        Connect-AzAccount -Environment 'AzureCloud' -Tenant $FirstAzTenantID -Subscription $FirstAzSubscriptionID -Identity -WarningAction SilentlyContinue
-    }
-    catch {
-        Write-ToLog -Stream Error -MessageData $_
-    }
+[System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using a System-Assigned Managed Identity to Tenant ID: ''', $EntraTenantID, ''' and Azure Subscription ID: ''', $LAWSubscriptionID, '''.')
+Write-ToLog -Stream Information -MessageData $AzConnectMessage
+try {
+    $ErrorActionPreference = 'Stop'
+    Connect-AzAccount -Environment 'AzureCloud' -Tenant $EntraTenantID -Subscription $LAWSubscriptionID -Identity -WarningAction SilentlyContinue
 }
-else {
-    [System.String]$AzConnectMessage = [System.String]::Concat('Connecting to Azure using user credentials to Tenant ID: ''', $FirstAzTenantID, ''' and Azure Subscription ID: ''', $FirstAzSubscriptionID, '''.')
-    Write-ToLog -Stream Information -MessageData $AzConnectMessage
-    try {
-        $ErrorActionPreference = 'Stop'
-        Connect-AzAccount -Environment 'AzureCloud' -Tenant $FirstAzTenantID -Subscription $FirstAzSubscriptionID -WarningAction SilentlyContinue
-    }
-    catch {
-        Write-ToLog -Stream Error -MessageData $_
-    }
+catch {
+    Write-ToLog -Stream Error -MessageData $_
 }
 ### END: CONNECT TO AZURE ###
 ### START: READ FROM LAW ###
@@ -328,29 +314,22 @@ $GetAzStorageAccount = Get-AzStorageAccount -ResourceGroupName $StorageAccountRe
 
 if ($GetAzStorageAccount) {
     Write-ToLog -Stream Information -MessageData "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
+    # Create storage account context for use with blob operations later
+    $ctx = $GetAzStorageAccount.Context
 }
 else {
     Write-ToLog -Stream Error -MessageData "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
     throw
 }
 
-Write-ToLog -Stream Information -MessageData 'Found workspace. Creating output directory.'
-New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-
 [System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
 [System.DateTime]$ToDateTimeUTCDateTime = $ToDateTimeUTC
-
-
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     Write-ToLog -Stream Information -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
 }
 else {
     Write-ToLog -Stream Warning -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
 }
-
-# Set these to false until proven true. This drive container creation and uploads.
-[System.Boolean]$FoundLogs = $false
-[System.Boolean]$LogsAlreadyUploaded = $false
 
 if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream Warning -MessageData 'Executing a search job for this run. This may lengthen overall runbook execution time.'
@@ -414,6 +393,10 @@ else {
     Write-ToLog -Stream Information -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
 
+# Set these to false until proven true. These drive container creation and uploads.
+[System.Boolean]$FoundLogs = $false
+[System.Boolean]$LogsAlreadyUploaded = $false
+
 # Loop in fixed slices of time
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
@@ -459,34 +442,35 @@ $LAWTableName
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
         [System.Boolean]$FoundLogs = $true
-        [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
-        [System.String]$OutFile   = Join-Path $OutDir "$LATableName-$FileStamp.jsonl"
 
-        Write-ToLog -Stream Information -MessageData "Found: '$QueryCount' results. Writing out file: '$OutFile' and appending."
-
-        [System.Collections.ArrayList]$OutFileArray = @()
-        foreach ($Response in $ResponseArray) {
-            #Write-ToLog -Stream Information -MessageData "Exporting result: '$i' of: '$QueryCount' results."
-            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFile -Append -Encoding utf8
-            $i++
-        }
-        Write-ToLog -Stream Information -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFile"
-
-        $OutFileArray.Add($OutFile) | Out-Null
-
-        # Only create the container if it wasn't created already.
-        $ctx = $GetAzStorageAccount.Context
+        # Only create the temporary upload folder and blob storage container if it wasn't created already.
         if ($false -eq $LogsAlreadyUploaded) {
             [System.Boolean]$LogsAlreadyUploaded = $true
-            Write-ToLog -Stream Information -MessageData 'This is the first time logs have been found in this run. Testing for and creating storage container.'
+            Write-ToLog -Stream Information -MessageData 'This is the first time logs have been found in this run.'
 
-            #Write-ToLog -Stream Information -MessageData 'Logs were found. Creating container name.'
-            #[System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
-            #[System.String]$ToDateTimeUTCDateTime = $ToDateTimeUTC
-            #[System.String]$FromDateTimeUTCFormatted = Get-Date -Date $FromDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-            #[System.String]$ToDateTimeUTCFormatted = Get-Date -Date $ToDateTimeUTCDateTime -Format 'yyyy-MM-ddTHH-mm-ss'
-            #[System.String]$ContainerName = ([System.String]::Concat($LAWTableName, '-', $FromDateTimeUTCFormatted, '-to-', $ToDateTimeUTCFormatted)).ToLower()
+            [System.String]$OutDirFullPath = Join-Path -Path 'D:\Home' -ChildPath $OutDirName
+
+            Write-ToLog -Stream Information -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
+            if (-not (Test-Path -Path $OutDirFullPath)) {
+                Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
+                    Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
+                }
+                catch {
+                    $_
+                    Write-ToLog -Stream Error -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
+                    throw
+                }
+            }
+            else {
+                Write-ToLog -Stream Information -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
+            }
+
             Write-ToLog -Stream Information -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
+            Write-ToLog -Stream Information -MessageData "Checking for existence of container: '$StorageAccountContainerName'."
+
             if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
                 Write-ToLog -Stream Information -MessageData 'Found a container with the same name. Reusing.'
             }
@@ -506,10 +490,38 @@ $LAWTableName
             }
         }
 
-        # Upload logs founs
+        [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
+        [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
+        [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
+
+        Write-ToLog -Stream Information -MessageData "Found: '$QueryCount' results."
+        Write-ToLog -Stream Information -MessageData "Attempting to create temporary output file: '$OutFileFullPath'."
+        try {
+            $ErrorActionPreference = 'Stop'
+            New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force
+            Write-ToLog -Stream Information -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
+        }
+        catch {
+            $_
+            Write-ToLog -Stream Error -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
+            throw
+        }
+
+        Write-ToLog -Stream Information -MessageData "Writing out file: '$OutFileFullPath' and appending."
+        [System.Collections.ArrayList]$OutFileArray = @()
+        foreach ($Response in $ResponseArray) {
+            #Write-ToLog -Stream Information -MessageData "Exporting result: '$i' of: '$QueryCount' results."
+            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8
+            $i++
+        }
+        Write-ToLog -Stream Information -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
+
+        $OutFileArray.Add($OutFileFullPath) | Out-Null
+
+        # Upload logs found in this time slice to blob storage
         Write-ToLog -Stream Information -MessageData 'Trying to upload logs for this time slice.'
         foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDir'."
+            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
             $GetOutFile = Get-Item -Path $OutFile
             [System.String]$OutFileBlobName = $GetOutFile.Name
             [System.String]$OutFileFullname = $GetOutFile.FullName
@@ -546,7 +558,7 @@ $LAWTableName
         # Remove logs just uploaded
         Write-ToLog -Stream Information -MessageData 'Trying to remove the logs which were just uploaded.'
         foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDir'."
+            Write-ToLog -Stream Information -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
             $GetOutFile = Get-Item -Path $OutFile
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
