@@ -291,6 +291,23 @@ if ($true -eq $IsSearchJob) {
     [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -Format 'yyyyMMddHHmmss'
     [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
 
+
+    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
+    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
+        $NextTimeBlock = $ToDateTimeUTCDateTime
+    }
+
+    # Slice via KQL time filter (portable and explicit)
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$ToDateTimeUTCDateTimeStringLowercase = $ToDateTimeUTCDateTime.ToString('o')
+
+    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
+    $KQLQuery = @"
+$LAWTableName
+| where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($ToDateTimeUTCDateTimeStringLowercase))
+| order by TimeGenerated asc
+"@
+    Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
     # Restrict new table name to LA table naming restrictions
     # ent_20260420170000_20260420180000_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
