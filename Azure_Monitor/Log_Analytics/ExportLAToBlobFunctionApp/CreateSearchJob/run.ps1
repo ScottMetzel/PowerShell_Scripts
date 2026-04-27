@@ -286,30 +286,24 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
-    [System.String]$SearchJobStartDateTimeString = Get-Date -Date $SearchJobStartDateTime -Format 'MM-dd-yyyy HH:mm:ss'
-    [System.String]$SearchJobEndDateTimeString = Get-Date -Date $SearchJobEndDateTime -Format 'MM-dd-yyyy HH:mm:ss'
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -Format 'yyyyMMddHHmmss'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
-
-
-    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddMinutes($SliceMinutes), 'Utc')
-    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
-        $NextTimeBlock = $ToDateTimeUTCDateTime
-    }
+    [System.String]$SearchJobEndDateMonthString = [System.DateTime]::DaysInMonth($SearchJobStartDateTime.Year, $SearchJobStartDateTime.Month)
+    [System.String]$SearchJobStartDateTimeString = Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00'
+    [System.String]$SearchJobEndDateTimeString = Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
 
     # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
-    [System.String]$ToDateTimeUTCDateTimeStringLowercase = $ToDateTimeUTCDateTime.ToString('o')
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00').ToString('o')
+    [System.String]$ToDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))).ToString('o')
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
     $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($ToDateTimeUTCDateTimeStringLowercase))
-| order by TimeGenerated asc
 "@
-    Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
+    Write-ToLog -Stream 'Information' -MessageData "KQL Query being executed: '$KQLQuery'."
     # Restrict new table name to LA table naming restrictions
-    # ent_20260420170000_20260420180000_SRCH
+    # SecurityEvent_2604_2604_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
     Write-ToLog -Stream 'Information' -MessageData "Creating a search job table named: '$SearchJobTableName' for starting date time: '$FromDateTimeUTC' and ending: '$ToDateTimeUTC'."
