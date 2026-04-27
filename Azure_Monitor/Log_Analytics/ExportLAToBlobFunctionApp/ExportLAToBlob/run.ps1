@@ -308,7 +308,7 @@ if ($true -eq $IsSearchJob) {
     [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
 
     # Restrict new table name to LA table naming restrictions
-    [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName.Substring(10),'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
+    [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
     # Set the table to query to the name of the search table.
     [System.String]$LAWTableName = $SearchJobTableName
