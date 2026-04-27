@@ -225,10 +225,14 @@ Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics a
 
 # The API Version of the Delete API used to remove the exported logs from Log Analytics
 [System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if (-not $DeleteAPIVersion) {
+if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
+
+    if ($DeleteAPIVersion -in @('',$null)) {
+        [System.String]$DeleteAPIVersion = '2023-09-01'
+    }
 }
-elseif ($DeleteAPIVersion.Length -lt 9) {
+elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = '2023-09-01'
 }
 else {
@@ -273,65 +277,67 @@ else {
 }
 ### END: GET LAW ###
 ### START: DELETE FROM LAw ###
-if ($true -eq $FoundLogs) {
-    if ($true -eq $RemoveLALogs) {
-        Write-ToLog -Stream 'Warning' -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
-        [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
-        [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
-        [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
-        [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
-        [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourceGroups/', $LAWResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LAWTableName,'/deleteData?api-version=',$DeleteAPIVersion)
+if ($true -eq $RemoveLALogs) {
+    Write-ToLog -Stream 'Warning' -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
+    [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
+    [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
+    [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
+    [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
+    [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourceGroups/', $LAWResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LAWTableName,'/deleteData?api-version=',$DeleteAPIVersion)
 
-        $DeleteAPIBody = @{
-            filters = @(
-                @{
-                    column   = 'TimeGenerated'
-                    operator = '>'
-                    value    = $DeleteAPIStartTimeFormatted
-                },
-                @{
-                    column   = 'TimeGenerated'
-                    operator = '<'
-                    value    = $DeleteAPIEndTimeFormatted
-                }
-            )
-        } | ConvertTo-Json -Depth 3
-
-        # Make the POST request
-        $Response = Invoke-AzRestMethod -Uri $DeleteAPIURI -Method POST -Payload $DeleteAPIBody
-        #$response = Invoke-WebRequest -Uri $DeleteAPIBody -Method Post -Headers $headers -Body $DeleteAPIURI
-
-        # Check for operation status URL in headers
-        $operationId = $response.Headers['Azure-AsyncOperation']
-        if (-not $operationId) {
-            $operationId = $response.Headers['Location']
-        }
-
-        if ($operationId) {
-            $operationUrl = $operationId[0]  # Take first value
-            Write-ToLog -Stream 'Verbose' -MessageData "Polling operation status at: $operationUrl"
-
-            while ($true) {
-                $statusResponse = Invoke-RestMethod -Uri $operationUrl -Headers $headers -Method Get
-                Write-ToLog -Stream 'Verbose' -MessageData "Status: $($statusResponse.status)"
-                if ($statusResponse.status -eq 'Succeeded' -or $statusResponse.status -eq 'Failed') {
-                    Write-ToLog -Stream 'Verbose' -MessageData "Final status: $($statusResponse.status)"
-                    break
-                }
-                Start-Sleep -Seconds 30 # Check status every 30 seconds
+    $DeleteAPIBody = @{
+        filters = @(
+            @{
+                column   = 'TimeGenerated'
+                operator = '>'
+                value    = $DeleteAPIStartTimeFormatted
+            },
+            @{
+                column   = 'TimeGenerated'
+                operator = '<'
+                value    = $DeleteAPIEndTimeFormatted
             }
-        }
-        else {
-            Write-ToLog -Stream 'Verbose' -MessageData 'No operation tracking URL found. Response body:'
-            $response.Content
+        )
+    } | ConvertTo-Json -Depth 3
+
+    # Make the POST request
+    try {
+        $ErrorActionPreference = 'Stop'
+        $Response = Invoke-AzRestMethod -Uri $DeleteAPIURI -Method POST -Payload $DeleteAPIBody
+        Write-ToLog -Stream 'Information' -MessageData "Successfully submitted delete request to table: '$LAWTableName' using URI: '$DeleteAPIURI' with body: '$DeleteAPIBody'."
+    }
+    catch {
+        $_
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete logs from table: '$LAWTableName' using URI: '$DeleteAPIURI' with body: '$DeleteAPIBody'."
+    }
+
+    # Check for operation status URL in headers
+    $operationId = $Response.Headers['Azure-AsyncOperation']
+    if (-not $operationId) {
+        $operationId = $Response.Headers['Location']
+    }
+
+    if ($operationId) {
+        $operationUrl = $operationId[0]  # Take first value
+        Write-ToLog -Stream 'Verbose' -MessageData "Polling operation status at: $operationUrl"
+
+        while ($true) {
+            $statusResponse = Invoke-RestMethod -Uri $operationUrl -Headers $headers -Method Get
+            Write-ToLog -Stream 'Verbose' -MessageData "Status: $($statusResponse.status)"
+            if ($statusResponse.status -eq 'Succeeded' -or $statusResponse.status -eq 'Failed') {
+                Write-ToLog -Stream 'Verbose' -MessageData "Final status: $($statusResponse.status)"
+                break
+            }
+            Start-Sleep -Seconds 30 # Check status every 30 seconds
         }
     }
     else {
-        Write-ToLog -Stream 'Verbose' -MessageData 'Logs were found, but script was set to not delete any logs from Log Analytics. Moving on.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'No operation tracking URL found. Response body:'
+        $Response.Content
     }
 }
 else {
-    Write-ToLog -Stream 'Warning' -MessageData 'No log messages found, so not removing logs, if enabled.'
+    Write-ToLog -Stream 'Verbose' -MessageData 'Script was set to not delete any logs from Log Analytics. Moving on.'
 }
 ### END: DELETE FROM LAw ###
 

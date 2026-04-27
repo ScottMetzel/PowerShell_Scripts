@@ -304,10 +304,11 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -Format 'yyyyMMddHHmmss'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
 
     # Restrict new table name to LA table naming restrictions
+    # SecurityEvent_2604_2604_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
     # Set the table to query to the name of the search table.

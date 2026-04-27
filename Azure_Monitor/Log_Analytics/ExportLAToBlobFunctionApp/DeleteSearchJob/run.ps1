@@ -286,31 +286,30 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -Format 'yyyyMMddHHmmss'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -Format 'yyyyMMddHHmmss'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
 
     # Restrict new table name to LA table naming restrictions
+    # SecurityEvent_2604_2604_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
-    # Set the table to query to the name of the search table.
-    [System.String]$LAWTableName = $SearchJobTableName
     Write-ToLog -Stream 'Verbose' -MessageData 'Table name to search is now search job table name.'
 }
 
 ### END: GET LAW & SET SEARCH JOB VARIABLES ###
 ### START: SEARCH JOB TABLE DELETION ###
 if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream 'Information' -MessageData 'Search job was executed. Trying to remove table since querying is complete.'
+    Write-ToLog -Stream 'Information' -MessageData 'Trying to remove Search Job table.'
     try {
         $ErrorActionPreference = 'Stop'
-        [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$LAWTableName,'?api-version=2021-12-01-preview')
+        [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$SearchJobTableName,'?api-version=2021-12-01-preview')
         Write-ToLog -Stream 'Verbose' -MessageData "Table delete string: '$TableDeleteString'."
 
         Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
     }
     catch {
         $_
-        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$LAWTableName' using path: '$TableDeleteString'."
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$SearchJobTableName' using path: '$TableDeleteString'."
         throw
     }
 }
