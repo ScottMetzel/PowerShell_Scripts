@@ -151,16 +151,16 @@ else {
 Write-ToLog -Stream 'Information' -MessageData "Is Search Job: '$IsSearchJob'."
 
 # Slice Minutes (bite size, like Pizza King)
-[System.Int32]$SliceMinutes = $Request.Query.SliceMinutes
-if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
-    [System.Int32]$SliceMinutes = $Request.Body.SliceMinutes
+[System.Int32]$SliceSeconds = $Request.Query.SliceMinutes
+if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
+    [System.Int32]$SliceSeconds = $Request.Body.SliceMinutes
 }
 
-if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
-    [System.Int32]$SliceMinutes = 15
-    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceMinutes' minutes."
+if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
+    [System.Int32]$SliceSeconds = 15
+    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceSeconds' minutes."
 }
-Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceMinutes'."
+Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceSeconds'."
 
 # Storage Account Resource ID
 [System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
@@ -279,8 +279,8 @@ else {
 ### START: DELETE FROM LAw ###
 if ($true -eq $RemoveLALogs) {
     Write-ToLog -Stream 'Warning' -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
-    [System.DateTime]$DeleteAPIStartTime = $FromDateTimeUTC
-    [System.DateTime]$DeleteAPIEndTime = $ToDateTimeUTC
+    [System.DateTime]$DeleteAPIStartTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
+    [System.DateTime]$DeleteAPIEndTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
     [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
     [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
     [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourceGroups/', $LAWResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LAWTableName,'/deleteData?api-version=',$DeleteAPIVersion)

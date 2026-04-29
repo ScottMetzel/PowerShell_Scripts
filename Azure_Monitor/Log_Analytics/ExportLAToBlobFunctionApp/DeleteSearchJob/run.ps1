@@ -151,16 +151,16 @@ else {
 Write-ToLog -Stream 'Information' -MessageData "Is Search Job: '$IsSearchJob'."
 
 # Slice Minutes (bite size, like Pizza King)
-[System.Int32]$SliceMinutes = $Request.Query.SliceMinutes
-if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
-    [System.Int32]$SliceMinutes = $Request.Body.SliceMinutes
+[System.Int32]$SliceSeconds = $Request.Query.SliceMinutes
+if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
+    [System.Int32]$SliceSeconds = $Request.Body.SliceMinutes
 }
 
-if ((-not $SliceMinutes) -or ($SliceMinutes -le 0)) {
-    [System.Int32]$SliceMinutes = 15
-    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceMinutes' minutes."
+if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
+    [System.Int32]$SliceSeconds = 15
+    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceSeconds' minutes."
 }
-Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceMinutes'."
+Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceSeconds'."
 
 # Storage Account Resource ID
 [System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
@@ -272,8 +272,8 @@ else {
     throw
 }
 
-[System.DateTime]$FromDateTimeUTCDateTime = $FromDateTimeUTC
-[System.DateTime]$ToDateTimeUTCDateTime = $ToDateTimeUTC
+[System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
+[System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     Write-ToLog -Stream 'Verbose' -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
 }
@@ -284,8 +284,8 @@ else {
 if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Warning' -MessageData 'Search job should have been executed in a prior run.'
 
-    [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTC
-    [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTC
+    [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
+    [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
     [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
     [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
 
