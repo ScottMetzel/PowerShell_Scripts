@@ -150,17 +150,17 @@ else {
 
 Write-ToLog -Stream 'Information' -MessageData "Is Search Job: '$IsSearchJob'."
 
-# Slice Minutes (bite size, like Pizza King)
-[System.Int32]$SliceSeconds = $Request.Query.SliceMinutes
+# Slice Seconds (bite size, like Pizza King)
+[System.Int32]$SliceSeconds = $Request.Query.SliceSeconds
 if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
-    [System.Int32]$SliceSeconds = $Request.Body.SliceMinutes
+    [System.Int32]$SliceSeconds = $Request.Body.SliceSeconds
 }
 
 if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
     [System.Int32]$SliceSeconds = 15
-    Write-ToLog -Stream 'Warning' -MessageData "Slice Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceSeconds' minutes."
+    Write-ToLog -Stream 'Warning' -MessageData "Slice Seconds was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$SliceSeconds' seconds."
 }
-Write-ToLog -Stream 'Information' -MessageData "Slice Minutes: '$SliceSeconds'."
+Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
 # Storage Account Resource ID
 [System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
