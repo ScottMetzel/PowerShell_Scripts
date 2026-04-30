@@ -190,6 +190,18 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
 }
 
+# Parallelism through PowerShell
+[System.Int32]$Parallelism = $Request.Query.Parallelism
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = $Request.Body.Parallelism
+}
+
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = 5
+    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
+}
+Write-ToLog -Stream 'Information' -MessageData "Parallelism: '$Parallelism'."
+
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir
 if (-not $OutDirName) {
@@ -323,6 +335,32 @@ else {
 [System.Boolean]$FoundLogs = $false
 [System.Boolean]$LogsAlreadyUploaded = $false
 
+## Test Below
+Write-ToLog -Stream 'Verbose' -MessageData "Parallelism for this run is set to: '$Parallelism'."
+$DateTimeWindows = [ordered]@{}
+
+while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
+    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
+    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
+        $NextTimeBlock = $ToDateTimeUTCDateTime
+        $DateTimeWindows.Add($FromDateTimeUTCDateTime.ToString('o'), $NextTimeBlock.ToString('o'))
+    }
+
+    # Slice via KQL time filter (portable and explicit)
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
+
+    $FromDateTimeUTCDateTime = $NextTimeBlock
+    $DateTimeWindows.Add($FromDateTimeUTCDateTime.ToString('o'), $NextTimeBlock.ToString('o'))
+}
+
+$DateTimeWindows.GetEnumerator() | ForEach-Object -Parallel {
+    Write-Tolog -Stream 'Information' -MessageData "Processing time window from: '$($_.Key)' to: '$($_.Value)'."
+
+} -ThrottleLimit $Parallelism
+
+## Test Above
+## Keep Below
 ### START: GET & EXPORT LOGS FROM LAW ###
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
@@ -476,6 +514,7 @@ $LAWTableName
     }
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
+## Keep Above
 
 Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
 ### END: GET & EXPORT LOGS FROM LAW ###

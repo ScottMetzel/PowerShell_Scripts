@@ -190,6 +190,18 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
 }
 
+# Parallelism through PowerShell
+[System.Int32]$Parallelism = $Request.Query.Parallelism
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = $Request.Body.Parallelism
+}
+
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = 5
+    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
+}
+Write-ToLog -Stream 'Information' -MessageData "Parallelism: '$Parallelism'."
+
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir
 if (-not $OutDirName) {
