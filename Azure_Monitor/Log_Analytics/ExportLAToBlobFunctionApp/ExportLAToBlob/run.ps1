@@ -377,6 +377,7 @@ Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAc
 
 ### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
 ### START: GET & EXPORT LOGS FROM LAW ###
+# Trunction size refrence (seen below): https://learn.microsoft.com/en-us/kusto/concepts/query-limits?view=microsoft-fabric#limit-on-result-set-size-result-truncation
 $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
     ## Redefine Write-ToLog function inside parallel runspace
     function Write-ToLog {
@@ -436,6 +437,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     $KQLQuery = @"
+set truncationmaxsize=201326592;
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
 | order by TimeGenerated asc
