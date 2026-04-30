@@ -200,7 +200,7 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
     [System.Int32]$Parallelism = 5
     Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
 }
-Write-ToLog -Stream 'Information' -MessageData "Parallelism: '$Parallelism'."
+Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir

@@ -200,7 +200,7 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
     [System.Int32]$Parallelism = 5
     Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
 }
-Write-ToLog -Stream 'Information' -MessageData "Parallelism: '$Parallelism'."
+Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir
@@ -237,10 +237,14 @@ Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics a
 
 # The API Version of the Delete API used to remove the exported logs from Log Analytics
 [System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if (-not $DeleteAPIVersion) {
+if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
+
+    if ($DeleteAPIVersion -in @('',$null)) {
+        [System.String]$DeleteAPIVersion = '2023-09-01'
+    }
 }
-elseif ($DeleteAPIVersion.Length -lt 9) {
+elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = '2023-09-01'
 }
 else {
@@ -332,9 +336,7 @@ else {
 }
 
 ### START: BUILD TIME WINDOWS ###
-Write-ToLog -Stream 'Verbose' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 $DateTimeWindows = [ordered]@{}
-
 Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
@@ -372,9 +374,59 @@ else {
 }
 
 Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
+
 ### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
 ### START: GET & EXPORT LOGS FROM LAW ###
-$DateTimeWindows.GetEnumerator() | ForEach-Object -Parallel {
+$DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
+    ## Redefine Write-ToLog function inside parallel runspace
+    function Write-ToLog {
+        param (
+            [ValidateSet(
+                'Debug',
+                'Error',
+                'Information',
+                'Progress',
+                'Success',
+                'Verbose',
+                'Warning',
+                IgnoreCase = $true
+            )]
+            [psobject]$Stream = 'Information',
+            [ValidateNotNullOrEmpty()]
+            [System.String]$MessageData
+        )
+
+        switch ($Stream) {
+            'Debug' {
+                Write-Debug -Message $MessageData
+            }
+            'Error' {
+                Write-Error -Message $MessageData
+            }
+            'Information' {
+                Write-Information -MessageData $MessageData
+            }
+            'Progress' {
+                Write-Progress -Activity $MessageData
+            }
+            'Success' {
+                Write-Output -InputObject $MessageData
+            }
+            'Warning' {
+                Write-Warning -Message $MessageData
+            }
+            'Verbose' {
+                Write-Verbose -Message $MessageData
+            }
+        }
+    }
+    ##
+    $LAWTableName = $Using:LAWTableName
+    $GetWorkspace = $Using:GetWorkspace
+    $OutDirFullPath = $Using:OutDirFullPath
+    $ctx = $Using:ctx
+    $StorageAccountContainerName = $Using:StorageAccountContainerName
+
     [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
     [System.DateTime]$NextTimeBlock = $_.Value
 
@@ -493,7 +545,7 @@ $LAWTableName
         Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
 
-} -ThrottleLimit $Parallelism
+}
 
 Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
 ### END: GET & EXPORT LOGS FROM LAW ###
