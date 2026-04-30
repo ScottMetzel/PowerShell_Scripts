@@ -331,42 +331,52 @@ else {
     Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
 
-# Set these to false until proven true. These drive container creation and uploads.
-[System.Boolean]$FoundLogs = $false
-[System.Boolean]$LogsAlreadyUploaded = $false
-
-## Test Below
+### START: BUILD TIME WINDOWS ###
 Write-ToLog -Stream 'Verbose' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 $DateTimeWindows = [ordered]@{}
 
+Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
     if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
         $NextTimeBlock = $ToDateTimeUTCDateTime
-        $DateTimeWindows.Add($FromDateTimeUTCDateTime.ToString('o'), $NextTimeBlock.ToString('o'))
     }
 
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
+    $DateTimeWindows.Add($FromDateTimeUTCDateTime, $NextTimeBlock)
     $FromDateTimeUTCDateTime = $NextTimeBlock
-    $DateTimeWindows.Add($FromDateTimeUTCDateTime.ToString('o'), $NextTimeBlock.ToString('o'))
+}
+Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
+### END: BUILD TIME WINDOWS ###
+### START: CREATE TEMPORARY OUTPUT DIRECTORY ###
+[System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
+Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
+if (-not (Test-Path -Path $OutDirFullPath)) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
+    try {
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
+        Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
+    }
+    catch {
+        $_
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
+        throw
+    }
+}
+else {
+    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
 }
 
-$DateTimeWindows.GetEnumerator() | ForEach-Object -Parallel {
-    Write-Tolog -Stream 'Information' -MessageData "Processing time window from: '$($_.Key)' to: '$($_.Value)'."
-
-} -ThrottleLimit $Parallelism
-
-## Test Above
-## Keep Below
+Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
+### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
 ### START: GET & EXPORT LOGS FROM LAW ###
-while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
-    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
-        $NextTimeBlock = $ToDateTimeUTCDateTime
-    }
+$DateTimeWindows.GetEnumerator() | ForEach-Object -Parallel {
+    [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
+    [System.DateTime]$NextTimeBlock = $_.Value
 
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
@@ -405,36 +415,6 @@ $LAWTableName
     [System.Int32]$i = 1
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
-        [System.Boolean]$FoundLogs = $true
-
-        # Only create the temporary upload folder and blob storage container if it wasn't created already.
-        if ($false -eq $LogsAlreadyUploaded) {
-            [System.Boolean]$LogsAlreadyUploaded = $true
-            Write-ToLog -Stream 'Verbose' -MessageData 'This is the first time logs have been found in this run.'
-
-            [System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
-
-            Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
-            if (-not (Test-Path -Path $OutDirFullPath)) {
-                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
-                try {
-                    $ErrorActionPreference = 'Stop'
-                    New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
-                    Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
-                }
-                catch {
-                    $_
-                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
-                    throw
-                }
-            }
-            else {
-                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
-            }
-
-            Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
-        }
-
         [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
         [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
         [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
@@ -512,9 +492,8 @@ $LAWTableName
         }
         Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
-    $FromDateTimeUTCDateTime = $NextTimeBlock
-}
-## Keep Above
+
+} -ThrottleLimit $Parallelism
 
 Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
 ### END: GET & EXPORT LOGS FROM LAW ###
