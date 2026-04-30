@@ -190,6 +190,18 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
 }
 
+# Parallelism through PowerShell
+[System.Int32]$Parallelism = $Request.Query.Parallelism
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = $Request.Body.Parallelism
+}
+
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = 5
+    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
+}
+Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
+
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir
 if (-not $OutDirName) {
@@ -225,10 +237,14 @@ Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics a
 
 # The API Version of the Delete API used to remove the exported logs from Log Analytics
 [System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if (-not $DeleteAPIVersion) {
+if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
+
+    if ($DeleteAPIVersion -in @('',$null)) {
+        [System.String]$DeleteAPIVersion = '2023-09-01'
+    }
 }
-elseif ($DeleteAPIVersion.Length -lt 9) {
+elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = '2023-09-01'
 }
 else {

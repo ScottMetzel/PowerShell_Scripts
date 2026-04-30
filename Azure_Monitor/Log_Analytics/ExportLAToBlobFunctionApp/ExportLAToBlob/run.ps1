@@ -190,6 +190,18 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
 }
 
+# Parallelism through PowerShell
+[System.Int32]$Parallelism = $Request.Query.Parallelism
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = $Request.Body.Parallelism
+}
+
+if ((-not $Parallelism) -or ($Parallelism -le 0)) {
+    [System.Int32]$Parallelism = 5
+    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
+}
+Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
+
 # Log Output local directory name (within the Function App)
 [System.String]$OutDirName = $Request.Query.OutDir
 if (-not $OutDirName) {
@@ -225,10 +237,14 @@ Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics a
 
 # The API Version of the Delete API used to remove the exported logs from Log Analytics
 [System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if (-not $DeleteAPIVersion) {
+if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
+
+    if ($DeleteAPIVersion -in @('',$null)) {
+        [System.String]$DeleteAPIVersion = '2023-09-01'
+    }
 }
-elseif ($DeleteAPIVersion.Length -lt 9) {
+elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
     [System.String]$DeleteAPIVersion = '2023-09-01'
 }
 else {
@@ -319,16 +335,100 @@ else {
     Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
 
-# Set these to false until proven true. These drive container creation and uploads.
-[System.Boolean]$FoundLogs = $false
-[System.Boolean]$LogsAlreadyUploaded = $false
-
-### START: GET & EXPORT LOGS FROM LAW ###
+### START: BUILD TIME WINDOWS ###
+$DateTimeWindows = [ordered]@{}
+Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
 while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
     if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
         $NextTimeBlock = $ToDateTimeUTCDateTime
     }
+
+    # Slice via KQL time filter (portable and explicit)
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
+
+    $DateTimeWindows.Add($FromDateTimeUTCDateTime, $NextTimeBlock)
+    $FromDateTimeUTCDateTime = $NextTimeBlock
+}
+Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
+### END: BUILD TIME WINDOWS ###
+### START: CREATE TEMPORARY OUTPUT DIRECTORY ###
+[System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
+Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
+if (-not (Test-Path -Path $OutDirFullPath)) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
+    try {
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
+        Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
+    }
+    catch {
+        $_
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
+        throw
+    }
+}
+else {
+    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
+}
+
+Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
+
+### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
+### START: GET & EXPORT LOGS FROM LAW ###
+$DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
+    ## Redefine Write-ToLog function inside parallel runspace
+    function Write-ToLog {
+        param (
+            [ValidateSet(
+                'Debug',
+                'Error',
+                'Information',
+                'Progress',
+                'Success',
+                'Verbose',
+                'Warning',
+                IgnoreCase = $true
+            )]
+            [psobject]$Stream = 'Information',
+            [ValidateNotNullOrEmpty()]
+            [System.String]$MessageData
+        )
+
+        switch ($Stream) {
+            'Debug' {
+                Write-Debug -Message $MessageData
+            }
+            'Error' {
+                Write-Error -Message $MessageData
+            }
+            'Information' {
+                Write-Information -MessageData $MessageData
+            }
+            'Progress' {
+                Write-Progress -Activity $MessageData
+            }
+            'Success' {
+                Write-Output -InputObject $MessageData
+            }
+            'Warning' {
+                Write-Warning -Message $MessageData
+            }
+            'Verbose' {
+                Write-Verbose -Message $MessageData
+            }
+        }
+    }
+    ##
+    $LAWTableName = $Using:LAWTableName
+    $GetWorkspace = $Using:GetWorkspace
+    $OutDirFullPath = $Using:OutDirFullPath
+    $ctx = $Using:ctx
+    $StorageAccountContainerName = $Using:StorageAccountContainerName
+
+    [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
+    [System.DateTime]$NextTimeBlock = $_.Value
 
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
@@ -367,36 +467,6 @@ $LAWTableName
     [System.Int32]$i = 1
     [System.Int32]$QueryCount = $ResponseArray.Count
     if (0 -lt $QueryCount) {
-        [System.Boolean]$FoundLogs = $true
-
-        # Only create the temporary upload folder and blob storage container if it wasn't created already.
-        if ($false -eq $LogsAlreadyUploaded) {
-            [System.Boolean]$LogsAlreadyUploaded = $true
-            Write-ToLog -Stream 'Verbose' -MessageData 'This is the first time logs have been found in this run.'
-
-            [System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
-
-            Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
-            if (-not (Test-Path -Path $OutDirFullPath)) {
-                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
-                try {
-                    $ErrorActionPreference = 'Stop'
-                    New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
-                    Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
-                }
-                catch {
-                    $_
-                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
-                    throw
-                }
-            }
-            else {
-                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
-            }
-
-            Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
-        }
-
         [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
         [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
         [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
@@ -474,7 +544,7 @@ $LAWTableName
         }
         Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
-    $FromDateTimeUTCDateTime = $NextTimeBlock
+
 }
 
 Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
