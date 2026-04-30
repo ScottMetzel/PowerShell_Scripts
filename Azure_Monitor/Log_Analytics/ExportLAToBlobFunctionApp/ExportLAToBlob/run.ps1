@@ -334,25 +334,6 @@ if ($true -eq $IsSearchJob) {
 else {
     Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
-
-### START: BUILD TIME WINDOWS ###
-$DateTimeWindows = [ordered]@{}
-Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
-while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
-    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
-        $NextTimeBlock = $ToDateTimeUTCDateTime
-    }
-
-    # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
-    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
-
-    $DateTimeWindows.Add($FromDateTimeUTCDateTime, $NextTimeBlock)
-    $FromDateTimeUTCDateTime = $NextTimeBlock
-}
-Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
-### END: BUILD TIME WINDOWS ###
 ### START: CREATE TEMPORARY OUTPUT DIRECTORY ###
 [System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
 Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
@@ -376,6 +357,24 @@ else {
 Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
 
 ### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
+### START: BUILD TIME WINDOWS ###
+$DateTimeWindows = [ordered]@{}
+Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
+while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
+    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
+    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
+        $NextTimeBlock = $ToDateTimeUTCDateTime
+    }
+
+    # Slice via KQL time filter (portable and explicit)
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
+
+    $DateTimeWindows.Add($FromDateTimeUTCDateTime, $NextTimeBlock)
+    $FromDateTimeUTCDateTime = $NextTimeBlock
+}
+Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
+### END: BUILD TIME WINDOWS ###
 ### START: GET & EXPORT LOGS FROM LAW ###
 # Trunction size refrence (seen below): https://learn.microsoft.com/en-us/kusto/concepts/query-limits?view=microsoft-fabric#limit-on-result-set-size-result-truncation
 $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
