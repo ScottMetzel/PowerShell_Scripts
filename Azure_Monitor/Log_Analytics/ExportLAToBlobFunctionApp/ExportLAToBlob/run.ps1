@@ -437,7 +437,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     if ($true -eq $IsSearchJob) {
-        Write-ToLog -Stream 'Information' -MessageData
+        Write-ToLog -Stream 'Information' -MessageData 'Modifying KQL query to look for logs in a search job table.'
         $KQLQuery = @"
 $LAWTableName
 | where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))

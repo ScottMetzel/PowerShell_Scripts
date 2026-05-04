@@ -298,7 +298,9 @@ else {
 Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
 Write-ToLog -Stream 'Information' -MessageData "Checking for existence of container: '$StorageAccountContainerName'."
 
+[System.Boolean]$ReuseContainer = $false
 if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
+    [System.Boolean]$ReuseContainer = $true
     Write-ToLog -Stream 'Verbose' -MessageData 'Found a container with the same name. Reusing.'
 }
 else {
@@ -315,7 +317,12 @@ else {
 }
 ### END: CREATE STORAGE CONTAINER ###
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+if ($true -eq $ReuseContainer) {
+    [System.String]$BodyMessage = "Reused container named: '$StorageAccountContainerName'. Exiting."
+}
+else {
+    [System.String]$BodyMessage = "Created a new container named: '$StorageAccountContainerName'. Exiting."
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

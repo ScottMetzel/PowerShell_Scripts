@@ -332,7 +332,7 @@ if ($true -eq $IsSearchJob) {
 ### END: SEARCH JOB TABLE DELETION ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+[System.String]$BodyMessage = "Deleted search job table named: '$SearchJobTableName'. Exiting."
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

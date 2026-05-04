@@ -368,7 +368,7 @@ else {
 ### END: GET LAW & CREATE SEARCH JOB ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+[System.String]$BodyMessage = "Created search job table named: '$SearchJobTableName'. Exiting."
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
