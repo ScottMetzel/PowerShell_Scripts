@@ -320,8 +320,8 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m%d'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m%d'
 
     # Restrict new table name to LA table naming restrictions
     # SecurityEvent_2604_2604_SRCH
@@ -426,6 +426,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     $OutDirFullPath = $Using:OutDirFullPath
     $ctx = $Using:ctx
     $StorageAccountContainerName = $Using:StorageAccountContainerName
+    $IsSearchJob = $Using:IsSearchJob
 
     [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
     [System.DateTime]$NextTimeBlock = $_.Value
@@ -435,11 +436,20 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
-    $KQLQuery = @"
+    if ($true -eq $IsSearchJob) {
+        $KQLQuery = @"
+$LAWTableName
+| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
+| order by _OriginalTimeGenerated asc
+"@
+    }
+    else {
+        $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
 | order by TimeGenerated asc
 "@
+    }
 
     [System.Collections.ArrayList]$ResponseArray = @()
     try {

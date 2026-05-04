@@ -302,9 +302,6 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
-    #[System.String]$SearchJobEndDateMonthString = [System.DateTime]::DaysInMonth($SearchJobStartDateTime.Year, $SearchJobStartDateTime.Month)
-    #[System.String]$SearchJobStartDateTimeString = Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00'
-    #[System.String]$SearchJobEndDateTimeString = Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))
     [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m%d'
     [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m%d'
 
