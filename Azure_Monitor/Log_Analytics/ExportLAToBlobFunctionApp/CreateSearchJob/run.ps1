@@ -310,7 +310,8 @@ if ($true -eq $IsSearchJob) {
 
     # Slice via KQL time filter (portable and explicit)
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00').ToString('o')
-    [System.String]$ToDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))).ToString('o')
+    [System.String]$SearchJobEndDateMonthStringConcatenated = [System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59')
+    [System.String]$ToDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobEndDateTime -Format $SearchJobEndDateMonthStringConcatenated).ToString('o')
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
     $KQLQuery = @"
