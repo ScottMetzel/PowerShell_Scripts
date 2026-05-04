@@ -329,7 +329,7 @@ if ($true -eq $IsSearchJob) {
 
     # Set the table to query to the name of the search table.
     [System.String]$LAWTableName = $SearchJobTableName
-    Write-ToLog -Stream 'Verbose' -MessageData 'Table name to search is now search job table name.'
+    Write-ToLog -Stream 'Verbose' -MessageData "Table name to search is now search job table name: '$SearchJobTableName'."
 }
 else {
     Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
@@ -437,6 +437,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     if ($true -eq $IsSearchJob) {
+        Write-ToLog -Stream 'Information' -MessageData
         $KQLQuery = @"
 $LAWTableName
 | where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -457,7 +458,7 @@ $LAWTableName
         # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
         # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
         # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
-        Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
+        Write-ToLog -Stream 'Information' -MessageData "KQL Query being executed: '$KQLQuery'."
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
         if ($InvokeQuery) {
             $InvokeQueryResults = $InvokeQuery.Results
@@ -465,13 +466,15 @@ $LAWTableName
                 $ResponseArray.Add($_) | Out-Null
             }
         }
+        else {
+            Write-ToLog -Stream 'Information' -MessageData "No results for dates from: '$FromDateTimeUTCDateTimeStringLowercase' to: '$NextTimeBlockStringLowercase'."
+        }
     }
     catch {
         $_
         Write-ToLog -Stream 'Error' -MessageData 'An error ocurred while executing the query.'
         throw
     }
-    #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $KQLQuery
 
     # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
     [System.Int32]$i = 1
