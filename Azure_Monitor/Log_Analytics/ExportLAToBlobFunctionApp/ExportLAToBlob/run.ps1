@@ -437,7 +437,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     if ($true -eq $IsSearchJob) {
-        Write-ToLog -Stream 'Information' -MessageData 'Modifying KQL query to look for logs in a search job table.'
+        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in a search job table.'
         $KQLQuery = @"
 $LAWTableName
 | where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -445,6 +445,7 @@ $LAWTableName
 "@
     }
     else {
+        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in a Log Analytics Plan table.'
         $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -459,12 +460,16 @@ $LAWTableName
         # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
         # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
         Write-ToLog -Stream 'Information' -MessageData "KQL Query being executed: '$KQLQuery'."
-        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
+        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -ErrorAction SilentlyContinue
         if ($InvokeQuery) {
+            Write-Verbose -Message 'Found results. Adding to response array.'
             $InvokeQueryResults = $InvokeQuery.Results
             $InvokeQueryResults | ForEach-Object -Process {
                 $ResponseArray.Add($_) | Out-Null
             }
+        }
+        elseif ($InvokeQuery.Error -notin @('',$null)) {
+            Write-ToLog -Stream 'Error' -MessageData 'Query result returned at least one error.'
         }
         else {
             Write-ToLog -Stream 'Information' -MessageData "No results for dates from: '$FromDateTimeUTCDateTimeStringLowercase' to: '$NextTimeBlockStringLowercase'."
@@ -472,7 +477,7 @@ $LAWTableName
     }
     catch {
         $_
-        Write-ToLog -Stream 'Error' -MessageData 'An error ocurred while executing the query.'
+        Write-ToLog -Stream 'Error' -MessageData $InvokeQuery.Error
         throw
     }
 
@@ -557,7 +562,6 @@ $LAWTableName
         }
         Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
-
 }
 
 Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'

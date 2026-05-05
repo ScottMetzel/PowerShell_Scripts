@@ -323,7 +323,7 @@ $LAWTableName
 
     try {
         $ErrorActionPreference = 'Stop'
-        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime
+        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -AsJob
         Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
     }
     catch {
@@ -345,10 +345,14 @@ $LAWTableName
     while ($false -eq $SearchJobTableCreated) {
         Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
         $GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
-
-        if ($GetSearchTable) {
+        [System.String]$SearchTableProvisioningState = $GetSearchTable.ProvisioningState
+        if ('Succeeded' -eq $SearchTableProvisioningState) {
             [System.Boolean]$SearchJobTableCreated = $true
             Write-ToLog -Stream 'Information' -MessageData 'Search job table is available!'
+        }
+        elseif ($SearchTableProvisioningState -in @('Failed', 'Error')) {
+            Write-ToLog -Stream 'Error' -MessageData 'Creation of search job table failed.'
+            throw
         }
         else {
             Write-ToLog -Stream 'Information' -MessageData 'Search job table not yet available. Waiting 10 seconds.'
