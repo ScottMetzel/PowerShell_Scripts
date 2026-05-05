@@ -372,7 +372,13 @@ else {
 ### END: GET LAW & CREATE SEARCH JOB ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = "Created search job table named: '$SearchJobTableName'. Exiting."
+if ($IsSearchJob) {
+    [System.String]$BodyMessage = "Created search job table named: '$SearchJobTableName'. Exiting."
+}
+else {
+    [System.String]$BodyMessage = "Didn't create a search job table since IsSearchJob wasn't true."
+}
+
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
