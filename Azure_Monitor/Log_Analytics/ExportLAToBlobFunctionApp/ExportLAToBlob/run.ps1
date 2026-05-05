@@ -435,125 +435,135 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
-    $KQLQuery = @"
+    if ($IsSearchJob) {
+        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in a search job table.'
+        $KQLQuery = @"
+$LAWTableName
+| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
+| order by _OriginalTimeGenerated asc
+"@
+    }
+    else {
+        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in an Analytics table plan'
+        $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
 | order by TimeGenerated asc
 "@
 
-    [System.Collections.ArrayList]$ResponseArray = @()
-    try {
-        $ErrorActionPreference = 'Stop'
-        # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
-        # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
-        # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
-        Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
-        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
-        if ($InvokeQuery) {
-            $InvokeQueryResults = $InvokeQuery.Results
-            $InvokeQueryResults | ForEach-Object -Process {
-                $ResponseArray.Add($_) | Out-Null
-            }
-        }
-    }
-    catch {
-        $_
-        Write-ToLog -Stream 'Error' -MessageData 'An error ocurred while executing the query.'
-        throw
-    }
-    #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $KQLQuery
-
-    # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
-    [System.Int32]$i = 1
-    [System.Int32]$QueryCount = $ResponseArray.Count
-    if (0 -lt $QueryCount) {
-        [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
-        [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
-        [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
-
-        Write-ToLog -Stream 'Information' -MessageData "Found: '$QueryCount' results. Attempting to create temporary output file: '$OutFileFullPath'."
+        [System.Collections.ArrayList]$ResponseArray = @()
         try {
             $ErrorActionPreference = 'Stop'
-            New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force
-            Write-ToLog -Stream 'Verbose' -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
+            # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
+            # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
+            # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
+            Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
+            $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery
+            if ($InvokeQuery) {
+                $InvokeQueryResults = $InvokeQuery.Results
+                $InvokeQueryResults | ForEach-Object -Process {
+                    $ResponseArray.Add($_) | Out-Null
+                }
+            }
         }
         catch {
             $_
-            Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
+            Write-ToLog -Stream 'Error' -MessageData 'An error ocurred while executing the query.'
             throw
         }
+        #$resp = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceId -Query $KQLQuery
 
-        Write-ToLog -Stream 'Verbose' -MessageData "Writing out file: '$OutFileFullPath' and appending."
-        [System.Collections.ArrayList]$OutFileArray = @()
-        foreach ($Response in $ResponseArray) {
-            #Write-ToLog -Stream 'Information' -MessageData "Exporting result: '$i' of: '$QueryCount' results."
-            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8
-            $i++
-        }
-        Write-ToLog -Stream 'Information' -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
+        # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
+        [System.Int32]$i = 1
+        [System.Int32]$QueryCount = $ResponseArray.Count
+        if (0 -lt $QueryCount) {
+            [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
+            [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
+            [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
 
-        $OutFileArray.Add($OutFileFullPath) | Out-Null
-
-        # Upload logs found in this time slice to blob storage
-        Write-ToLog -Stream 'Information' -MessageData 'Trying to upload logs for this time slice.'
-        foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
-            $GetOutFile = Get-Item -Path $OutFile
-            [System.String]$OutFileBlobName = $GetOutFile.Name
-            [System.String]$OutFileFullname = $GetOutFile.FullName
-
-            # Upload logs if blob doesn't already exist. If it does, bail.
-            Write-ToLog -Stream 'Verbose' -MessageData 'Testing if blob already exists.'
-            $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue -Verbose:$false
-
-            if ($GetBlob) {
-                Write-ToLog -Stream 'Error' -MessageData "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
-                throw
-            }
-            else {
-                Write-ToLog -Stream 'Verbose' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
-                try {
-                    $ErrorActionPreference = 'Stop'
-                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false | Out-Null
-                    Write-ToLog -Stream 'Information' -MessageData "Successfully uploaded file: '$OutFileFullname' as blob named: '$OutFileBlobName'."
-                }
-                catch {
-                    $_
-                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
-                    throw
-                }
-            }
-        }
-        # Remove logs just uploaded
-        Write-ToLog -Stream 'Verbose' -MessageData 'Trying to remove the logs which were just uploaded.'
-        foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
-            $GetOutFile = Get-Item -Path $OutFile
-            [System.String]$OutFileFullname = $GetOutFile.FullName
-
+            Write-ToLog -Stream 'Information' -MessageData "Found: '$QueryCount' results. Attempting to create temporary output file: '$OutFileFullPath'."
             try {
                 $ErrorActionPreference = 'Stop'
-                Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
-                Remove-Item -Path $OutFileFullname -Force | Out-Null
-                Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
+                New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force
+                Write-ToLog -Stream 'Verbose' -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
             }
             catch {
                 $_
-                Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
+                Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
+                throw
             }
+
+            Write-ToLog -Stream 'Verbose' -MessageData "Writing out file: '$OutFileFullPath' and appending."
+            [System.Collections.ArrayList]$OutFileArray = @()
+            foreach ($Response in $ResponseArray) {
+                #Write-ToLog -Stream 'Information' -MessageData "Exporting result: '$i' of: '$QueryCount' results."
+                ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8
+                $i++
+            }
+            Write-ToLog -Stream 'Information' -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
+
+            $OutFileArray.Add($OutFileFullPath) | Out-Null
+
+            # Upload logs found in this time slice to blob storage
+            Write-ToLog -Stream 'Information' -MessageData 'Trying to upload logs for this time slice.'
+            foreach ($OutFile in $OutFileArray) {
+                Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
+                $GetOutFile = Get-Item -Path $OutFile
+                [System.String]$OutFileBlobName = $GetOutFile.Name
+                [System.String]$OutFileFullname = $GetOutFile.FullName
+
+                # Upload logs if blob doesn't already exist. If it does, bail.
+                Write-ToLog -Stream 'Verbose' -MessageData 'Testing if blob already exists.'
+                $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue -Verbose:$false
+
+                if ($GetBlob) {
+                    Write-ToLog -Stream 'Error' -MessageData "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
+                    throw
+                }
+                else {
+                    Write-ToLog -Stream 'Verbose' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
+                    try {
+                        $ErrorActionPreference = 'Stop'
+                        Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false | Out-Null
+                        Write-ToLog -Stream 'Information' -MessageData "Successfully uploaded file: '$OutFileFullname' as blob named: '$OutFileBlobName'."
+                    }
+                    catch {
+                        $_
+                        Write-ToLog -Stream 'Error' -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
+                        throw
+                    }
+                }
+            }
+            # Remove logs just uploaded
+            Write-ToLog -Stream 'Verbose' -MessageData 'Trying to remove the logs which were just uploaded.'
+            foreach ($OutFile in $OutFileArray) {
+                Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
+                $GetOutFile = Get-Item -Path $OutFile
+                [System.String]$OutFileFullname = $GetOutFile.FullName
+
+                try {
+                    $ErrorActionPreference = 'Stop'
+                    Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
+                    Remove-Item -Path $OutFileFullname -Force | Out-Null
+                    Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
+                }
+                catch {
+                    $_
+                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
+                }
+            }
+            Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
         }
-        Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
+
     }
 
-}
+    Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
+    ### END: GET & EXPORT LOGS FROM LAW ###
+    #### Push output binding ####
+    [System.String]$BodyMessage = 'Exiting!'
+    Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
-Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
-### END: GET & EXPORT LOGS FROM LAW ###
-#### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
-Write-ToLog -Stream 'Information' -MessageData $BodyMessage
-
-Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-        StatusCode = [HttpStatusCode]::OK
-        Body       = $BodyMessage
-    })
+    Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::OK
+            Body       = $BodyMessage
+        })

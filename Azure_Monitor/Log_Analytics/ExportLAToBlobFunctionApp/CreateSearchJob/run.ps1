@@ -302,15 +302,12 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
-    [System.String]$SearchJobEndDateMonthString = [System.DateTime]::DaysInMonth($SearchJobStartDateTime.Year, $SearchJobStartDateTime.Month)
-    [System.String]$SearchJobStartDateTimeString = Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00'
-    [System.String]$SearchJobEndDateTimeString = Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m%d'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m%d'
 
     # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobStartDateTime -Format 'MM-01-yyyy 00:00:00').ToString('o')
-    [System.String]$ToDateTimeUTCDateTimeStringLowercase = (Get-Date -Date $SearchJobEndDateTime -Format ([System.String]::Concat('MM-',$SearchJobEndDateMonthString,'-yyyy 11:59:59'))).ToString('o')
+    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
+    [System.String]$ToDateTimeUTCDateTimeStringLowercase = $ToDateTimeUTCDateTime.ToString('o')
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
     $KQLQuery = @"
@@ -326,12 +323,12 @@ $LAWTableName
 
     try {
         $ErrorActionPreference = 'Stop'
-        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $SearchJobStartDateTimeString -EndSearchTime $SearchJobEndDateTimeString
+        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -AsJob
         Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
     }
     catch {
         $_
-        Write-ToLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
+        oLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
         throw
     }
 
@@ -348,10 +345,14 @@ $LAWTableName
     while ($false -eq $SearchJobTableCreated) {
         Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
         $GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
-
-        if ($GetSearchTable) {
+        [System.String]$SearchTableProvisioningState = $GetSearchTable.ProvisioningState
+        if ('Succeeded' -eq $SearchTableProvisioningState) {
             [System.Boolean]$SearchJobTableCreated = $true
             Write-ToLog -Stream 'Information' -MessageData 'Search job table is available!'
+        }
+        elseif ($SearchTableProvisioningState -in @('Failed', 'Error')) {
+            Write-ToLog -Stream 'Error' -MessageData 'Creation of search job table failed.'
+            throw
         }
         else {
             Write-ToLog -Stream 'Information' -MessageData 'Search job table not yet available. Waiting 10 seconds.'
@@ -371,9 +372,13 @@ else {
 ### END: GET LAW & CREATE SEARCH JOB ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+[System.String]$BodyMessage = "Created search job table named: '$SearchJobTableName'. Exiting."
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
+Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+        StatusCode = [HttpStatusCode]::OK
+        Body       = $BodyMessage
+    })
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
         StatusCode = [HttpStatusCode]::OK
         Body       = $BodyMessage
