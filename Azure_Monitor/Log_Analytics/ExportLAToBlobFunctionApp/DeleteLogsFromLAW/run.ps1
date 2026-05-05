@@ -354,7 +354,12 @@ else {
 ### END: DELETE FROM LAw ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+if ($true -eq $RemoveLALogs) {
+    [System.String]$BodyMessage = 'Delete Logs API called. Exiting.'
+}
+else {
+    [System.String]$BodyMessage = 'Delete Logs API not called. Exiting.'
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

@@ -328,7 +328,7 @@ $LAWTableName
     }
     catch {
         $_
-        oLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
+        Write-ToLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
         throw
     }
 
