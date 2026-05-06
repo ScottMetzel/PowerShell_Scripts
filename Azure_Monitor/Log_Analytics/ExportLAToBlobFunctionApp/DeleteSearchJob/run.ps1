@@ -66,6 +66,25 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
+### START: LOAD MODULES ###
+[System.Collections.ArrayList]$ModulesToImport = @(
+    'Az.Accounts',
+    'Az.OperationalInsights',
+    'Az.Resources',
+    'Az.Storage'
+)
+
+[System.Int32]$i = 1
+[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
+
+Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
+foreach ($Module in $ModulesToImport) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    Import-Module -Name $Module *> $null
+    $i++
+}
+Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -267,7 +286,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -332,7 +351,12 @@ if ($true -eq $IsSearchJob) {
 ### END: SEARCH JOB TABLE DELETION ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = "Deleted search job table named: '$SearchJobTableName'. Exiting."
+if ($true -eq $IsSearchJob) {
+    [System.String]$BodyMessage = "Deleted search job table named: '$SearchJobTableName'. Exiting."
+}
+else {
+    [System.String]$BodyMessage = "'IsSearchJob' is set to: '$IsSearchJob' so not deleting a search job table. Exiting."
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
