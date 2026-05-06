@@ -312,18 +312,45 @@ if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
     $KQLQuery = @"
 $LAWTableName
-| where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($ToDateTimeUTCDateTimeStringLowercase))
 "@
-    Write-ToLog -Stream 'Information' -MessageData "KQL Query being executed: '$KQLQuery'."
+    Write-ToLog -Stream 'Information' -MessageData "KQL Query to execute: '$KQLQuery'."
+
     # Restrict new table name to LA table naming restrictions
-    # SecurityEvent_2604_2604_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
-    Write-ToLog -Stream 'Information' -MessageData "Creating a search job table named: '$SearchJobTableName' for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
+    Write-ToLog -Stream 'Information' -MessageData "Creating search job table name is: '$SearchJobTableName'."
+
+    [System.String]$TablesAPIVersion = '2025-07-01'
+    [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
+    Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
+
+    $SearchTableAPIBody = [ordered]@{
+        'properties' = @{
+            'searchResults' = @{
+                query           = $KQLQuery
+                startSearchTime = $FromDateTimeUTCDateTime;
+                endSearchTime   = $ToDateTimeUTCDateTime;
+            }
+        }
+    }
+    <#
+    {
+    "properties": {
+        "searchResults": {
+                "query": "Syslog | where * has 'suspected.exe'",
+                "limit": 1000,
+                "startSearchTime": "2025-01-01T00:00:00Z",
+                "endSearchTime": "2025-11-30T00:00:00Z"
+            }
+    }
+}
+    #>
+    Write-ToLog -Stream 'Information' -MessageData "Creating serach job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
 
     try {
         $ErrorActionPreference = 'Stop'
-        New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -RetentionInDays -1 -AsJob
+        Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method PUT -Payload $SearchTableAPIBody
+        #New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -RetentionInDays -1 -AsJob
         Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
     }
     catch {
@@ -344,18 +371,19 @@ $LAWTableName
 
     while ($false -eq $SearchJobTableCreated) {
         Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
-        $GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
+        $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET
+        #$GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
         [System.String]$SearchTableProvisioningState = $GetSearchTable.ProvisioningState
         if ('Succeeded' -eq $SearchTableProvisioningState) {
             [System.Boolean]$SearchJobTableCreated = $true
-            Write-ToLog -Stream 'Information' -MessageData 'Search job table is available!'
+            Write-ToLog -Stream 'Information' -MessageData "Search job table is available! Status: '$SearchTableProvisioningState'"
         }
         elseif ($SearchTableProvisioningState -in @('Failed', 'Error')) {
-            Write-ToLog -Stream 'Error' -MessageData 'Creation of search job table failed.'
+            Write-ToLog -Stream 'Error' -MessageData "Creation of search job table failed. Status: '$SearchTableProvisioningState'"
             throw
         }
         else {
-            Write-ToLog -Stream 'Information' -MessageData 'Search job table not yet available. Waiting 10 seconds.'
+            Write-ToLog -Stream 'Information' -MessageData "Search job table not available yet. Status: '$SearchTableProvisioningState'. Waiting 10 seconds."
             [System.Int32]$CurrentSeconds = $CurrentSeconds + $SleepSeconds
             Start-Sleep -Seconds $SleepSeconds
 
