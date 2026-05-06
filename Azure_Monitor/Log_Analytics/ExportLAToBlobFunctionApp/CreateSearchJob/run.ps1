@@ -66,6 +66,25 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
+### START: LOAD MODULES ###
+[System.Collections.ArrayList]$ModulesToImport = @(
+    'Az.Accounts',
+    'Az.OperationalInsights',
+    'Az.Resources',
+    'Az.Storage'
+)
+
+[System.Int32]$i = 1
+[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
+
+Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
+foreach ($Module in $ModulesToImport) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    Import-Module -Name $Module -Verbose:$false | Out-Null
+    $i++
+}
+Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -333,6 +352,7 @@ $LAWTableName
             }
         }
     }
+    $SearchTableAPIBodyJSON = ConvertTo-Json -InputObject $SearchTableAPIBody -Depth 10
     <#
     {
     "properties": {
@@ -349,13 +369,21 @@ $LAWTableName
 
     try {
         $ErrorActionPreference = 'Stop'
-        Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method PUT -Payload $SearchTableAPIBody
+        $NewSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method PUT -Payload $SearchTableAPIBodyJSON
         #New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -RetentionInDays -1 -AsJob
         Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
     }
     catch {
         $_
         Write-ToLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
+        throw
+    }
+    [System.Int32]$NewSearchTableStatusCode = $NewSearchTable.StatusCode
+    if ($NewSearchTableStatusCode -in @('202', '200')) {
+        Write-ToLog -Stream 'Information' -MessageData "New search job request processing. Status code: '$NewSearchTableStatusCode'."
+    }
+    else {
+        Write-ToLog -Stream 'Error' -MessageData "New search job request error code: '$NewSearchTableStatusCode'."
         throw
     }
 
@@ -372,8 +400,9 @@ $LAWTableName
     while ($false -eq $SearchJobTableCreated) {
         Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
         $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET
+        $SearchTableContentTable = ConvertFrom-Json -InputObject $GetSearchTable.Content -AsHashtable -Depth 10
         #$GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
-        [System.String]$SearchTableProvisioningState = $GetSearchTable.ProvisioningState
+        [System.String]$SearchTableProvisioningState = $SearchTableContentTable.properties.provisioningState
         if ('Succeeded' -eq $SearchTableProvisioningState) {
             [System.Boolean]$SearchJobTableCreated = $true
             Write-ToLog -Stream 'Information' -MessageData "Search job table is available! Status: '$SearchTableProvisioningState'"
