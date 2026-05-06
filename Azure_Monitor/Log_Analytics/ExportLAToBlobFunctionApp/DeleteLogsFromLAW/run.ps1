@@ -267,7 +267,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {

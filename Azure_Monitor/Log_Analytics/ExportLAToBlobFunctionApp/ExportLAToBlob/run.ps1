@@ -80,7 +80,13 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
 foreach ($Module in $ModulesToImport) {
     Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-    Import-Module -Name $Module -Verbose:$false | Out-Null
+    $PreviousVerbosePreference = $VerbosePreference
+    $PreviousInformationPreference = $InformationPreference
+    $VerbosePreference = 'SilentlyContinue'
+    $InformationPreference = 'SilentlyContinue'
+    Import-Module -Name $Module -Verbose:$false *> $null
+    $VerbosePreference = $PreviousVerbosePreference
+    $InformationPreference = $PreviousInformationPreference
     $i++
 }
 Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
@@ -286,7 +292,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -360,7 +366,7 @@ if (-not (Test-Path -Path $OutDirFullPath)) {
     Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
     try {
         $ErrorActionPreference = 'Stop'
-        New-Item -ItemType Directory -Path $OutDirFullPath -Force | Out-Null
+        New-Item -ItemType Directory -Path $OutDirFullPath -Force *> $null
         Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
     }
     catch {
@@ -450,13 +456,19 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.Int32]$i = 1
     [System.Int32]$ModulesToImportCount = $ModulesToImport.Count
 
-    Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules within runspace.'
+    Write-ToLog -Stream 'Verbose' -MessageData 'Importing PowerShell modules within runspace.'
     foreach ($Module in $ModulesToImport) {
         Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-        Import-Module -Name $Module -Verbose:$false | Out-Null
+        $PreviousVerbosePreference = $VerbosePreference
+        $PreviousInformationPreference = $InformationPreference
+        $VerbosePreference = 'SilentlyContinue'
+        $InformationPreference = 'SilentlyContinue'
+        Import-Module -Name $Module -Verbose:$false *> $null
+        $VerbosePreference = $PreviousVerbosePreference
+        $InformationPreference = $PreviousInformationPreference
         $i++
     }
-    Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+    Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading modules.'
     ### END: LOAD MODULES ###
     ##
     $LAWTableName = $Using:LAWTableName
@@ -475,7 +487,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
 
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
     if ($true -eq $IsSearchJob) {
-        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in a search job table.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'Setting KQL query to look for logs in a search job table.'
         $KQLQuery = @"
 $LAWTableName
 | where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -483,7 +495,7 @@ $LAWTableName
 "@
     }
     else {
-        Write-ToLog -Stream 'Information' -MessageData 'Setting KQL query to look for logs in a Log Analytics Plan table.'
+        Write-ToLog -Stream 'Verbose' -MessageData 'Setting KQL query to look for logs in a Log Analytics Plan table.'
         $KQLQuery = @"
 $LAWTableName
 | where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
@@ -497,13 +509,13 @@ $LAWTableName
         # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
         # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
         # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
-        Write-ToLog -Stream 'Information' -MessageData "KQL Query being executed: '$KQLQuery'."
+        Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
         $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -ErrorAction SilentlyContinue
         if ($InvokeQuery) {
             Write-Verbose -Message 'Found results. Adding to response array.'
             $InvokeQueryResults = $InvokeQuery.Results
             $InvokeQueryResults | ForEach-Object -Process {
-                $ResponseArray.Add($_) | Out-Null
+                $ResponseArray.Add($_) *> $null
             }
         }
         elseif ($InvokeQuery.Error -notin @('',$null)) {
@@ -530,7 +542,7 @@ $LAWTableName
         Write-ToLog -Stream 'Information' -MessageData "Found: '$QueryCount' results. Attempting to create temporary output file: '$OutFileFullPath'."
         try {
             $ErrorActionPreference = 'Stop'
-            New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force
+            New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force *> $null
             Write-ToLog -Stream 'Verbose' -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
         }
         catch {
@@ -543,18 +555,26 @@ $LAWTableName
         [System.Collections.ArrayList]$OutFileArray = @()
         foreach ($Response in $ResponseArray) {
             #Write-ToLog -Stream 'Information' -MessageData "Exporting result: '$i' of: '$QueryCount' results."
-            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8
+            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8 *> $null
             $i++
         }
         Write-ToLog -Stream 'Information' -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
 
-        $OutFileArray.Add($OutFileFullPath) | Out-Null
+        $OutFileArray.Add($OutFileFullPath) *> $null
 
         # Upload logs found in this time slice to blob storage
         Write-ToLog -Stream 'Information' -MessageData 'Trying to upload logs for this time slice.'
         foreach ($OutFile in $OutFileArray) {
             Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
-            $GetOutFile = Get-Item -Path $OutFile
+            $GetOutFile = Get-Item -Path $OutFile -ErrorAction SilentlyContinue -Verbose:$false
+            if ($GetOutFile) {
+                Write-ToLog -Stream 'Verbose' -MessageData "Found: '$OutFile' to upload."
+            }
+            else {
+                Write-ToLog -Stream 'Error' -MessageData "Could not find: '$OutFile'. Check function code and try again."
+                throw
+            }
+
             [System.String]$OutFileBlobName = $GetOutFile.Name
             [System.String]$OutFileFullname = $GetOutFile.FullName
 
@@ -567,10 +587,16 @@ $LAWTableName
                 throw
             }
             else {
-                Write-ToLog -Stream 'Verbose' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
+                Write-ToLog -Stream 'Information' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
                 try {
                     $ErrorActionPreference = 'Stop'
-                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false | Out-Null
+                    [System.String]$PreviousVerbosePreference = $VerbosePreference
+                    [System.String]$PreviousInformationPreference = $InformationPreference
+                    $VerbosePreference = 'SilentlyContinue'
+                    $InformationPreference = 'SilentlyContinue'
+                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false *> $null
+                    $VerbosePreference = $PreviousVerbosePreference
+                    $InformationPreference = $PreviousInformationPreference
                     Write-ToLog -Stream 'Information' -MessageData "Successfully uploaded file: '$OutFileFullname' as blob named: '$OutFileBlobName'."
                 }
                 catch {
@@ -578,34 +604,26 @@ $LAWTableName
                     Write-ToLog -Stream 'Error' -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
                     throw
                 }
-            }
-        }
-        # Remove logs just uploaded
-        Write-ToLog -Stream 'Verbose' -MessageData 'Trying to remove the logs which were just uploaded.'
-        foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
-            $GetOutFile = Get-Item -Path $OutFile
-            [System.String]$OutFileFullname = $GetOutFile.FullName
 
-            try {
-                $ErrorActionPreference = 'Stop'
-                Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
-                Remove-Item -Path $OutFileFullname -Force | Out-Null
-                Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
-            }
-            catch {
-                $_
-                Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
+                Write-ToLog -Stream 'Verbose' -MessageData "'$OutFile' uploaded. Trying to remove local copy."
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
+                    Remove-Item -Path $OutFileFullname -Force *> $null
+                    Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
+                }
+                catch {
+                    $_
+                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
+                }
             }
         }
-        Write-ToLog -Stream 'Verbose' -MessageData 'Done removing logs.'
     }
 }
 
-Write-ToLog -Stream 'Information' -MessageData 'Done querying. Moving on.'
 ### END: GET & EXPORT LOGS FROM LAW ###
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+[System.String]$BodyMessage = 'Done querying and exporting. Exiting.'
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

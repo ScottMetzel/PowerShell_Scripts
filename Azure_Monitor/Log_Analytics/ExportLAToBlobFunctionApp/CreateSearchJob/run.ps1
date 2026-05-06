@@ -80,7 +80,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
 foreach ($Module in $ModulesToImport) {
     Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-    Import-Module -Name $Module -Verbose:$false | Out-Null
+    Import-Module -Name $Module *> $null
     $i++
 }
 Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
@@ -286,7 +286,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
