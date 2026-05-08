@@ -66,6 +66,24 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
+### START: LOAD MODULES ###
+[System.Collections.ArrayList]$ModulesToImport = @(
+    'Az.Accounts',
+    'Az.Resources',
+    'Az.Storage'
+)
+
+[System.Int32]$i = 1
+[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
+
+Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
+foreach ($Module in $ModulesToImport) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    Import-Module -Name $Module *> $null
+    $i++
+}
+Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -265,7 +283,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -298,14 +316,16 @@ else {
 Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
 Write-ToLog -Stream 'Information' -MessageData "Checking for existence of container: '$StorageAccountContainerName'."
 
+[System.Boolean]$ReuseContainer = $false
 if (Get-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue) {
+    [System.Boolean]$ReuseContainer = $true
     Write-ToLog -Stream 'Verbose' -MessageData 'Found a container with the same name. Reusing.'
 }
 else {
     Write-ToLog -Stream 'Verbose' -MessageData 'Container does not exist. Attempting to create it.'
     try {
         $ErrorActionPreference = 'Stop'
-        New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue | Out-Null
+        New-AzStorageContainer -Name $StorageAccountContainerName -Context $ctx -ErrorAction SilentlyContinue *> $null
     }
     catch {
         $_
@@ -315,7 +335,12 @@ else {
 }
 ### END: CREATE STORAGE CONTAINER ###
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+if ($true -eq $ReuseContainer) {
+    [System.String]$BodyMessage = "Reused container named: '$StorageAccountContainerName'. Exiting."
+}
+else {
+    [System.String]$BodyMessage = "Created a new container named: '$StorageAccountContainerName'. Exiting."
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

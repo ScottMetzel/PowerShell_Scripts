@@ -267,7 +267,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -354,7 +354,12 @@ else {
 ### END: DELETE FROM LAw ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+if ($true -eq $RemoveLALogs) {
+    [System.String]$BodyMessage = 'Delete Logs API called. Exiting.'
+}
+else {
+    [System.String]$BodyMessage = 'Delete Logs API not called. Exiting.'
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
