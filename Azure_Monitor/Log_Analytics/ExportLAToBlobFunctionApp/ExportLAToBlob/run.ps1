@@ -620,7 +620,6 @@ $LAWTableName
         }
     }
 }
-
 ### END: GET & EXPORT LOGS FROM LAW ###
 #### Push output binding ####
 [System.String]$BodyMessage = 'Done querying and exporting. Exiting.'

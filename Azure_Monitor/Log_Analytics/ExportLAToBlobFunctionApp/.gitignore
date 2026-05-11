@@ -1,6 +1,6 @@
 
 # Azure Functions artifacts
-bin
+.\bin
 obj
 appsettings.json
 local.settings.json
