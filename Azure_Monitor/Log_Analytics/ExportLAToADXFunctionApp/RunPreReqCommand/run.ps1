@@ -111,6 +111,20 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "ADX Database Name: '$ADXDatabaseName'."
 }
 
+# Command to execute in ADX (Kusto) to ensure the database exists and is ready for ingestion
+[System.String]$ADXCommand = $Request.Query.ADXCommand
+if (-not $ADXCommand) {
+    [System.String]$ADXCommand = $Request.Body.ADXCommand
+}
+
+if ($ADXCommand -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Command was not provided in the query parameters or the request body. Please provide a valid ADX Command and try again.'
+    throw 'ADX Command is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Command: '$ADXCommand'."
+}
+
 # Log Analytics Resource ID
 [System.String]$LAWResourceID = $Request.Query.LAWResourceID
 if (-not $LAWResourceID) {
@@ -296,9 +310,6 @@ Write-ToLog -Stream 'Information' -MessageData "ADX Timeout Minutes for this run
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
 [System.String]$LAWSubscriptionID = $LAWRIDArray[2]
-[System.String]$LAWResourceGroupName = $LAWRIDArray[4]
-[System.String]$LAWorkspaceName = $LAWRIDArray[-1]
-
 Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request parameters.'
 
 ### END: DERIVE VARIABLES FROM REQUEST PARAMETER ###
@@ -316,29 +327,6 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: GET WORKSPACE & SET DATE TIME VARIABLES ###
-Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-# GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.OperationalInsights/workspaces/{workspaceName}?api-version=2025-07-01
-$WorkspaceURI = [System.String]::Concat('https://management.azure.com/subscriptions/', $LAWSubscriptionID, '/resourceGroups/', $LAWResourceGroupName, '/providers/Microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '?api-version=2025-07-01')
-$GetWorkspace = Invoke-AzRestMethod -Method GET -Uri $WorkspaceURI -ErrorAction SilentlyContinue
-
-if (200 -eq $GetWorkspace.StatusCode) {
-    Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-}
-else {
-    Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
-
-[System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
-[System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
-if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    Write-ToLog -Stream 'Verbose' -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
-}
-else {
-    Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
-}
-### END: GET WORKSPACE & SET DATE TIME VARIABLES ###
 ### START: IS SEARCH JOB? ###
 if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Warning' -MessageData 'Configuring run to query against a search job table.'
@@ -361,182 +349,57 @@ else {
 }
 ### END: IS SEARCH JOB? ###
 ### START: DEFINE STATIC VARIABLES ###
-[System.String]$clusterUrl = [System.String]::Concat($ADXClusterURI,';Fed=True')
-$LAWClusterURI = [System.String]::Concat('https://ade.loganalytics.io/subscriptions/', $LAWSubscriptionID, '/resourcegroups/', $LAWResourceGroupName, '/providers/microsoft.operationalinsights/workspaces/', $LAWorkspaceName)
-$LAWDBName = $LAWorkspaceName
+[System.String]$clusterUrl   = [System.String]::Concat($ADXClusterURI,';Fed=True')
 ### END: DEFINE STATIC VARIABLES ###
-### START: BUILD TIME WINDOWS ###
-$DateTimeWindows = [ordered]@{}
-Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
-while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    $NextTimeBlock = [datetime]::SpecifyKind($FromDateTimeUTCDateTime.AddSeconds($SliceSeconds), 'Utc')
-    if ($NextTimeBlock -gt $ToDateTimeUTCDateTime) {
-        $NextTimeBlock = $ToDateTimeUTCDateTime
-    }
+### START: RUN PREREQS ###
 
-    # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
-    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
+# Load SDK — point to wherever you have Kusto.Data.dll
+$packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+[System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
 
-    $DateTimeWindows.Add($FromDateTimeUTCDateTimeStringLowercase, $NextTimeBlockStringLowercase)
-    $FromDateTimeUTCDateTime = $NextTimeBlock
+# Build connection
+$kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
+
+# ← Admin provider, not query provider
+$adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
+
+# Request properties
+$crp = New-Object Kusto.Data.Common.ClientRequestProperties
+$crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
+$crp.SetOption(
+    [Kusto.Data.Common.ClientRequestProperties]::OptionServerTimeout,
+    [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
+)
+
+Write-ToLog -Stream 'Information' -MessageData "Executing prerequisite command'."
+
+# ← ExecuteControlCommand, not ExecuteQuery
+$reader   = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
+$table    = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
+
+# Async command returns a single row with the OperationId
+$opId = $table.Rows[0]['OperationId']
+Write-Host "Submitted — OperationId: $opId"
+
+# --- Poll for completion ---
+$pollCommand = ".show operations $opId"
+do {
+    Start-Sleep -Seconds 15
+    $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
+    $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
+    $state      = $pollTable.Rows[0]['State']
+    Write-Host "  ↻ $state"
+} while ($state -notin @('Completed', 'Failed', 'Abandoned'))
+
+if ($state -ne 'Completed') {
+    Write-Warning "❌ Failed — check: .show operation details $opId"
 }
-Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
-### END: BUILD TIME WINDOWS ###
-### START: GET & EXPORT LOGS FROM LAW ###
-# Trunction size refrence (seen below): https://learn.microsoft.com/en-us/kusto/concepts/query-limits?view=microsoft-fabric#limit-on-result-set-size-result-truncation
-$DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
-    ## Redefine Write-ToLog function inside parallel runspace
-    function Write-ToLog {
-        param (
-            [ValidateSet(
-                'Debug',
-                'Error',
-                'Information',
-                'Progress',
-                'Success',
-                'Verbose',
-                'Warning',
-                IgnoreCase = $true
-            )]
-            [psobject]$Stream = 'Information',
-            [ValidateNotNullOrEmpty()]
-            [System.String]$MessageData
-        )
-
-        switch ($Stream) {
-            'Debug' {
-                Write-Debug -Message $MessageData
-            }
-            'Error' {
-                Write-Error -Message $MessageData
-            }
-            'Information' {
-                Write-Information -MessageData $MessageData
-            }
-            'Progress' {
-                Write-Progress -Activity $MessageData
-            }
-            'Success' {
-                Write-Output -InputObject $MessageData
-            }
-            'Warning' {
-                Write-Warning -Message $MessageData
-            }
-            'Verbose' {
-                Write-Verbose -Message $MessageData
-            }
-        }
-    }
-    ### START: LOAD MODULES ###
-    [System.Collections.ArrayList]$ModulesToImport = @(
-        'Az.Accounts',
-        'Az.Kusto',
-        'Az.Resources',
-        'Az.Storage'
-    )
-
-    [System.Int32]$i = 1
-    [System.Int32]$ModulesToImportCount = $ModulesToImport.Count
-
-    Write-ToLog -Stream 'Verbose' -MessageData 'Importing PowerShell modules within runspace.'
-    foreach ($Module in $ModulesToImport) {
-        Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-        $PreviousVerbosePreference = $VerbosePreference
-        $PreviousInformationPreference = $InformationPreference
-        $VerbosePreference = 'SilentlyContinue'
-        $InformationPreference = 'SilentlyContinue'
-        Import-Module -Name $Module -Verbose:$false *> $null
-        $VerbosePreference = $PreviousVerbosePreference
-        $InformationPreference = $PreviousInformationPreference
-        $i++
-    }
-    Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading modules.'
-    ### END: LOAD MODULES ###
-    ##
-    $LAWTableName = $Using:LAWTableName
-    $GetWorkspace = $Using:GetWorkspace
-    $OutDirFullPath = $Using:OutDirFullPath
-    $ctx = $Using:ctx
-    $StorageAccountContainerName = $Using:StorageAccountContainerName
-    $IsSearchJob = $Using:IsSearchJob
-    $clusterUrl   = $Using:clusterUrl
-    $ADXDatabaseName = $Using:ADXDatabaseName
-    $LAWClusterURI = $Using:LAWClusterURI
-    $LAWDBName = $Using:LAWDBName
-    $ADXTimeoutMinutes = $Using:ADXTimeoutMinutes
-
-    [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
-    [System.DateTime]$NextTimeBlock = $_.Value
-
-    # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
-    [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
-
-    # Load SDK — point to wherever you have Kusto.Data.dll
-    $packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
-    [System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
-
-    # Build connection
-    $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
-
-    # ← Admin provider, not query provider
-    $adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
-
-    # Request properties
-    $crp = New-Object Kusto.Data.Common.ClientRequestProperties
-    $crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
-    $crp.SetOption(
-        [Kusto.Data.Common.ClientRequestProperties]::OptionServerTimeout,
-        [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
-    )
-
-    $command = @"
-.set-or-append Syslog <|
-cluster('$LAWClusterURI')
-.database('$LAWDBName')
-.$SearchJobTableName
-| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
-| project
-    TimeGenerated = _OriginalTimeGenerated,
-    Computer, EventTime, Facility, HostIP, HostName,
-    ProcessID, ProcessName, SeverityLevel, SourceSystem,
-    SyslogMessage, Type = _OriginalType,
-    TenantId = toguid(_OriginalTenantId),
-    _ResourceId,
-    _SubscriptionId = guid(null),
-    _TimeReceived = now()
-"@
-    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
-
-    # ← ExecuteControlCommand, not ExecuteQuery
-    $reader   = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $command, $crp)
-    $table    = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
-
-    # Async command returns a single row with the OperationId
-    $opId = $table.Rows[0]['OperationId']
-    Write-Host "Submitted — OperationId: $opId"
-
-    # --- Poll for completion ---
-    $pollCommand = ".show operations $opId"
-    do {
-        Start-Sleep -Seconds 15
-        $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
-        $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
-        $state      = $pollTable.Rows[0]['State']
-        Write-Host "  ↻ $state"
-    } while ($state -notin @('Completed', 'Failed', 'Abandoned'))
-
-    if ($state -ne 'Completed') {
-        Write-Warning "❌ Failed — check: .show operation details $opId"
-    }
-    else {
-        Write-Host '✅ Done'
-    }
+else {
+    Write-Host '✅ Done'
 }
-### END: GET & EXPORT LOGS FROM LAW ###
+### END: RUN PREREQS ###
 #### Push output binding ####
-[System.String]$BodyMessage = 'Done querying and exporting. Exiting.'
+[System.String]$BodyMessage = 'Done executing prerequisite command. Exiting.'
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
