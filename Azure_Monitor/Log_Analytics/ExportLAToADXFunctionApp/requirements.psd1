@@ -8,5 +8,5 @@
     'Az.Kusto'               = '2.*'
     'Az.OperationalInsights' = '3.*'
     'Az.Resources'           = '9.*'
-    'Az.Storage'             = '9.*'
+    #'Az.Storage'             = '9.*'
 }

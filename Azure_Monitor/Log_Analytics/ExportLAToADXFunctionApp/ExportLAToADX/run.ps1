@@ -66,6 +66,29 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
+### START: LOAD MODULES ###
+[System.Collections.ArrayList]$ModulesToImport = @(
+    'Az.Accounts',
+    'Az.Resources'
+)
+
+[System.Int32]$i = 1
+[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
+
+Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
+foreach ($Module in $ModulesToImport) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    $PreviousVerbosePreference = $VerbosePreference
+    $PreviousInformationPreference = $InformationPreference
+    $VerbosePreference = 'SilentlyContinue'
+    $InformationPreference = 'SilentlyContinue'
+    Import-Module -Name $Module -Verbose:$false *> $null
+    $VerbosePreference = $PreviousVerbosePreference
+    $InformationPreference = $PreviousInformationPreference
+    $i++
+}
+Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -432,8 +455,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.Collections.ArrayList]$ModulesToImport = @(
         'Az.Accounts',
         'Az.Kusto',
-        'Az.Resources',
-        'Az.Storage'
+        'Az.Resources'
     )
 
     [System.Int32]$i = 1
