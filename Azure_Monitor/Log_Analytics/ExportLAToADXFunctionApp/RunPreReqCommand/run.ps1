@@ -241,20 +241,6 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
 }
 
-# Storage Account Container Name
-[System.String]$StorageAccountContainerName = $Request.Query.StorageAccountContainerName
-if (-not $StorageAccountContainerName) {
-    [System.String]$StorageAccountContainerName = $Request.Body.StorageAccountContainerName
-}
-
-if ($StorageAccountContainerName -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Container Name was not provided in the query parameters or the request body. Please provide a valid Storage Account Container Name and try again.'
-    throw 'Storage Account Container Name is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
-}
-
 # Parallelism through PowerShell
 [System.Int32]$Parallelism = $Request.Query.Parallelism
 if ((-not $Parallelism) -or ($Parallelism -le 0)) {
@@ -266,28 +252,6 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
     Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
 }
 Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
-
-# Log Output local directory name (within the Function App)
-[System.String]$OutDirName = $Request.Query.OutDir
-if (-not $OutDirName) {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-elseif ($OutDirName.Length -lt 1) {
-    [System.String]$OutDirName = 'la-export'
-}
-else {
-    [System.String]$OutDirName = 'la-export'
-}
-
-if ($OutDirName -in @('', $null)) {
-    [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
-}
-else {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
 
 # Remove the exported logs from Log Analytics (careful with this)
 [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
@@ -350,6 +314,16 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
+### START: SET DATE TIME UTC
+[System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
+[System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
+if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
+    Write-ToLog -Stream 'Verbose' -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
+}
+else {
+    Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
+}
+### END: SET DATE TIME UTC
 ### START: IS SEARCH JOB? ###
 if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Warning' -MessageData 'Configuring run to query against a search job table.'
@@ -377,7 +351,7 @@ else {
 ### START: RUN PREREQS ###
 
 # Load SDK — point to wherever you have Kusto.Data.dll
-$packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+$packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
 [System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
 
 # Build connection

@@ -253,28 +253,6 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 
-# Log Output local directory name (within the Function App)
-[System.String]$OutDirName = $Request.Query.OutDir
-if (-not $OutDirName) {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-elseif ($OutDirName.Length -lt 1) {
-    [System.String]$OutDirName = 'la-export'
-}
-else {
-    [System.String]$OutDirName = 'la-export'
-}
-
-if ($OutDirName -in @('', $null)) {
-    [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
-}
-else {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
-
 # Remove the exported logs from Log Analytics (careful with this)
 [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
 if (-not $RemoveLALogs) {
@@ -496,7 +474,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
     # Load SDK — point to wherever you have Kusto.Data.dll
-    $packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+    $packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
     [System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
 
     # Build connection
