@@ -276,7 +276,7 @@ else {
 }
 ### END: IS SEARCH JOB? ###
 ### START: DEFINE STATIC VARIABLES ###
-[System.String]$clusterUrl   = [System.String]::Concat($ADXClusterURI,';Fed=True')
+[System.String]$clusterUrl   = [System.String]::Concat($ADXClusterURI)
 ### END: DEFINE STATIC VARIABLES ###
 ### START: RUN PREREQS ###
 
@@ -316,10 +316,10 @@ $crp.SetOption(
 )
 
 # ← ExecuteControlCommand, not ExecuteQuery
-Write-ToLog -Stream 'Information' -MessageData "Executing control command'."
+Write-ToLog -Stream 'Information' -MessageData "Executing control command: '$ADXCommand'."
 try {
     $ErrorActionPreference = 'Stop'
-    $reader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
+    $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
 }
 catch {
     $_
@@ -327,30 +327,30 @@ catch {
     throw
 }
 
-Write-ToLog -Stream 'Information' -MessageData 'Converting Kusto Data Reader to DataSet and retrieving first table.'
-$table    = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
+#Write-ToLog -Stream 'Information' -MessageData 'Converting Kusto Data Reader to DataSet and retrieving first table.'
+#$table = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($ExecuteCommand).Tables[0]
 
 # Async command returns a single row with the OperationId
-$opId = $table.Rows[0]['OperationId']
-Write-ToLog -Stream 'Information' -MessageData "Submitted — OperationId: $opId"
+# $opId = $table.Rows[0]['OperationId']
+# Write-ToLog -Stream 'Information' -MessageData "Submitted — OperationId: $opId"
 
-# --- Poll for completion ---
-Write-ToLog -Stream 'Information' -MessageData "Polling for completion of operation ID: '$opId'."
-$pollCommand = ".show operations $opId"
-do {
-    Start-Sleep -Seconds 15
-    $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
-    $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
-    $state      = $pollTable.Rows[0]['State']
-    Write-ToLog -Stream 'Information' -MessageData "  ↻ $state"
-} while ($state -notin @('Completed', 'Failed', 'Abandoned'))
+# # --- Poll for completion ---
+# Write-ToLog -Stream 'Information' -MessageData "Polling for completion of operation ID: '$opId'."
+# $pollCommand = ".show operations $opId"
+# do {
+#     Start-Sleep -Seconds 15
+#     $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
+#     $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
+#     $state      = $pollTable.Rows[0]['State']
+#     Write-ToLog -Stream 'Information' -MessageData "  ↻ $state"
+# } while ($state -notin @('Completed', 'Failed', 'Abandoned'))
 
-if ($state -ne 'Completed') {
-    Write-Warning "❌ Failed — check: .show operation details $opId"
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData '✅ Done'
-}
+# if ($state -ne 'Completed') {
+#     Write-Warning "❌ Failed — check: .show operation details $opId"
+# }
+# else {
+#     Write-ToLog -Stream 'Information' -MessageData '✅ Done'
+# }
 ### END: RUN PREREQS ###
 #### Push output binding ####
 [System.String]$BodyMessage = 'Done executing prerequisite command. Exiting.'
