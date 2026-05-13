@@ -362,7 +362,8 @@ else {
 }
 ### END: IS SEARCH JOB? ###
 ### START: DEFINE STATIC VARIABLES ###
-[System.String]$clusterUrl = [System.String]::Concat($ADXClusterURI,';Fed=True')
+# Reference Kusto Connection Strings: https://learn.microsoft.com/en-us/kusto/api/connection-strings/kusto?view=azure-data-explorer&preserve-view=true#authentication-properties-details
+[System.String]$clusterUrl = [System.String]::Concat($ADXClusterURI, '/', $ADXDatabaseName)
 $LAWClusterURI = [System.String]::Concat('https://ade.loganalytics.io/subscriptions/', $LAWSubscriptionID, '/resourcegroups/', $LAWResourceGroupName, '/providers/microsoft.operationalinsights/workspaces/', $LAWorkspaceName)
 $LAWDBName = $LAWorkspaceName
 ### END: DEFINE STATIC VARIABLES ###
@@ -474,11 +475,15 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
     # Load SDK — point to wherever you have Kusto.Data.dll
-    $packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+    $packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+    #$packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
     [System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
 
     # Build connection
     $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
+
+    # Add System-Assigned Managed Identity (MSI) authentication to the connection string
+    $kcsb = $kcsb.WithAadSystemManagedIdentity()
 
     # ← Admin provider, not query provider
     $adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
