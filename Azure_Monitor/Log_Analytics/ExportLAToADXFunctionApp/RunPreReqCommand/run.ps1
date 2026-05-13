@@ -92,20 +92,6 @@ Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
-# Entra Tenant ID
-[System.String]$EntraTenantID = $Request.Query.EntraTenantID
-if (-not $EntraTenantID) {
-    [System.String]$EntraTenantID = $Request.Body.EntraTenantID
-}
-
-if ($EntraTenantID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Entra Tenant ID was not provided in the query parameters or the request body. Please provide a valid Entra Tenant ID and try again.'
-    throw 'Entra Tenant ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Entra Tenant ID: '$EntraTenantID'."
-}
-
 # ADX Cluster URI
 [System.String]$ADXClusterURI = $Request.Query.ADXClusterURI
 if (-not $ADXClusterURI) {
@@ -227,61 +213,6 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
-# Storage Account Resource ID
-[System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
-if (-not $StorageAccountResourceID) {
-    [System.String]$StorageAccountResourceID = $Request.Body.StorageAccountResourceID
-}
-
-if ($StorageAccountResourceID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Resource ID was not provided in the query parameters or the request body. Please provide a valid Storage Account Resource ID and try again.'
-    throw 'Storage Account Resource ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
-}
-
-# Parallelism through PowerShell
-[System.Int32]$Parallelism = $Request.Query.Parallelism
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = $Request.Body.Parallelism
-}
-
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = 5
-    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
-}
-Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
-
-# Remove the exported logs from Log Analytics (careful with this)
-[System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
-if (-not $RemoveLALogs) {
-    [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Body.RemoveLALogs)
-}
-else {
-    [System.Boolean]$RemoveLALogs = $false
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics after export: '$RemoveLALogs'."
-
-# The API Version of the Delete API used to remove the exported logs from Log Analytics
-[System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
-
-    if ($DeleteAPIVersion -in @('',$null)) {
-        [System.String]$DeleteAPIVersion = '2023-09-01'
-    }
-}
-elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-else {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIVersion'."
-
 # ADX Timeout Value (in minutes) for the .set-or-append command
 [System.Int32]$ADXTimeoutMinutes = $Request.Query.ADXTimeoutMinutes
 if ((-not $ADXTimeoutMinutes) -or ($ADXTimeoutMinutes -le 0)) {
@@ -298,7 +229,6 @@ Write-ToLog -Stream 'Information' -MessageData "ADX Timeout Minutes for this run
 
 [System.String]$LAWSubscriptionID = $LAWRIDArray[2]
 Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request parameters.'
-
 ### END: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 ### START: CONNECT TO AZURE ###
 # Ensures you do not inherit an AzContext in your runbook
@@ -351,7 +281,7 @@ else {
 ### START: RUN PREREQS ###
 
 # Load SDK — point to wherever you have Kusto.Data.dll
-[System.String]$KustoToolsPath = 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+[System.String]$KustoToolsPath = (Resolve-Path -Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
 [System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
 
 Write-Tolog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
@@ -367,6 +297,10 @@ catch {
 # Build connection
 Write-ToLog -Stream 'Information' -MessageData "Building Kusto connection string to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
 $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
+
+# Add System-Assigned Managed Identity (MSI) authentication to the connection string
+Write-ToLog -Stream 'Information' -MessageData 'Adding System-Assigned Managed Identity (MSI) authentication to Kusto connection string.'
+$kcsb = $kcsb.WithAadSystemManagedIdentity()
 
 # ← Admin provider, not query provider
 Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Admin Provider to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
