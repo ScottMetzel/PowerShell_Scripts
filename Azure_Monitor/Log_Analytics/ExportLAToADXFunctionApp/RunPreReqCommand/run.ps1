@@ -281,7 +281,7 @@ else {
 ### START: RUN PREREQS ###
 
 # Load SDK — point to wherever you have Kusto.Data.dll
-[System.String]$KustoToolsPath = (Resolve-Path -Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
+[System.String]$KustoToolsPath = (Resolve-Path -Path '.\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
 [System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
 
 Write-Tolog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
