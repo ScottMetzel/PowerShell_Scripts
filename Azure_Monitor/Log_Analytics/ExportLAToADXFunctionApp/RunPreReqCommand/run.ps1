@@ -351,16 +351,29 @@ else {
 ### START: RUN PREREQS ###
 
 # Load SDK — point to wherever you have Kusto.Data.dll
-$packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
-[System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
+[System.String]$KustoToolsPath = 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
+[System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
+
+Write-Tolog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+try {
+    $ErrorActionPreference = 'Stop'
+    [System.Reflection.Assembly]::LoadFrom($KustoToolsDataDllPath)
+}
+catch {
+    Write-ToLog -Stream 'Error' -MessageData "An error occurred while loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+    throw
+}
 
 # Build connection
+Write-ToLog -Stream 'Information' -MessageData "Building Kusto connection string to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
 $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
 
 # ← Admin provider, not query provider
+Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Admin Provider to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
 $adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
 
 # Request properties
+Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Client Request Properties with timeout of: '$ADXTimeoutMinutes' minutes."
 $crp = New-Object Kusto.Data.Common.ClientRequestProperties
 $crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
 $crp.SetOption(
@@ -368,31 +381,41 @@ $crp.SetOption(
     [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
 )
 
-Write-ToLog -Stream 'Information' -MessageData "Executing prerequisite command'."
-
 # ← ExecuteControlCommand, not ExecuteQuery
-$reader   = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
+Write-ToLog -Stream 'Information' -MessageData "Executing control command'."
+try {
+    $ErrorActionPreference = 'Stop'
+    $reader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
+}
+catch {
+    $_
+    Write-ToLog -Stream 'Error' -MessageData "An error occurred while executing control command: '$ADXCommand' against database: '$ADXDatabaseName'."
+    throw
+}
+
+Write-ToLog -Stream 'Information' -MessageData 'Converting Kusto Data Reader to DataSet and retrieving first table.'
 $table    = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
 
 # Async command returns a single row with the OperationId
 $opId = $table.Rows[0]['OperationId']
-Write-Host "Submitted — OperationId: $opId"
+Write-ToLog -Stream 'Information' -MessageData "Submitted — OperationId: $opId"
 
 # --- Poll for completion ---
+Write-ToLog -Stream 'Information' -MessageData "Polling for completion of operation ID: '$opId'."
 $pollCommand = ".show operations $opId"
 do {
     Start-Sleep -Seconds 15
     $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
     $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
     $state      = $pollTable.Rows[0]['State']
-    Write-Host "  ↻ $state"
+    Write-ToLog -Stream 'Information' -MessageData "  ↻ $state"
 } while ($state -notin @('Completed', 'Failed', 'Abandoned'))
 
 if ($state -ne 'Completed') {
     Write-Warning "❌ Failed — check: .show operation details $opId"
 }
 else {
-    Write-Host '✅ Done'
+    Write-ToLog -Stream 'Information' -MessageData '✅ Done'
 }
 ### END: RUN PREREQS ###
 #### Push output binding ####
