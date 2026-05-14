@@ -175,6 +175,20 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Log Analytics Workspace Table Name: '$LAWTableName'."
 }
 
+# Project Clause (optional)
+[System.String]$ProjectClause = $Request.Query.ProjectClause
+if (-not $ProjectClause) {
+    [System.String]$ProjectClause = $Request.Body.ProjectClause
+}
+
+if ($ProjectClause -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'Project Clause was not provided in the query parameters or the request body. Setting it to an empty string.'
+    [System.String]$ProjectClause = ''
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "Project Clause: '$ProjectClause'."
+}
+
 # From Date Time in UTC
 [System.String]$FromDateTimeUTC = $Request.Query.FromDateTimeUTC
 if (-not $FromDateTimeUTC) {
@@ -415,6 +429,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     $clusterUrl   = $Using:clusterUrl
     $ADXDatabaseName = $Using:ADXDatabaseName
     $ADXTableName = $Using:ADXTableName
+    $ProjectClause = $Using:ProjectClause
     $LAWClusterURI = $Using:LAWClusterURI
     $LAWDBName = $Using:LAWDBName
     $SearchJobTableName = $Using:SearchJobTableName
@@ -462,7 +477,8 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
         [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
     )
 
-    $command = @"
+    <#
+$command = @"
 .set-or-append $ADXTableName <|
 cluster('$LAWClusterURI')
 .database('$LAWDBName')
@@ -478,6 +494,17 @@ cluster('$LAWClusterURI')
     _SubscriptionId = guid(null),
     _TimeReceived = now()
 "@
+#>
+
+    $command = @"
+.set-or-append $ADXTableName <|
+cluster('$LAWClusterURI')
+.database('$LAWDBName')
+.$SearchJobTableName
+| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
+$ProjectClause
+"@
+
     Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
 
     # ← ExecuteControlCommand, not ExecuteQuery
