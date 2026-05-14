@@ -133,6 +133,20 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "ADX Database Name: '$ADXDatabaseName'."
 }
 
+# ADX Table Name
+[System.String]$ADXTableName = $Request.Query.ADXTableName
+if (-not $ADXTableName) {
+    [System.String]$ADXTableName = $Request.Body.ADXTableName
+}
+
+if ($ADXTableName -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Table Name was not provided in the query parameters or the request body. Please provide a valid ADX Table Name and try again.'
+    throw 'ADX Table Name is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Table Name: '$ADXTableName'."
+}
+
 # Log Analytics Resource ID
 [System.String]$LAWResourceID = $Request.Query.LAWResourceID
 if (-not $LAWResourceID) {
@@ -374,8 +388,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     }
     ### START: LOAD MODULES ###
     [System.Collections.ArrayList]$ModulesToImport = @(
-        'Az.Accounts',
-        'Az.Resources'
+        'Az.Accounts'
     )
 
     [System.Int32]$i = 1
@@ -401,6 +414,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     $IsSearchJob = $Using:IsSearchJob
     $clusterUrl   = $Using:clusterUrl
     $ADXDatabaseName = $Using:ADXDatabaseName
+    $ADXTableName = $Using:ADXTableName
     $LAWClusterURI = $Using:LAWClusterURI
     $LAWDBName = $Using:LAWDBName
     $SearchJobTableName = $Using:SearchJobTableName
@@ -449,7 +463,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     )
 
     $command = @"
-.set-or-append $LAWTableName <|
+.set-or-append $ADXTableName <|
 cluster('$LAWClusterURI')
 .database('$LAWDBName')
 .$SearchJobTableName
