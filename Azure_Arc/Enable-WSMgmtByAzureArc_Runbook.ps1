@@ -184,9 +184,7 @@ function DiscoverMachines {
                 $MachinesArray.Add($_) | Out-Null
             }
             [System.Int32]$Skip = $Skip + $TakeFirst
-        } until (
-            0 -eq $SearchAzGraph.Count
-        )
+        } until (250 -gt $SearchAzGraph.Count)
     }
     catch {
         $_
@@ -196,6 +194,40 @@ function DiscoverMachines {
     ## 01.16.2025 - TO DO: Change output to hashtable to return ineligible servers
     Write-Verbose -Message 'Outputting array result.'
     $MachinesArray
+}
+
+function MachineHasLicenseProfile {
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param (
+        [PSObject]$Machine
+    )
+    [System.String]$ThisFunctionName = $MyInvocation.MyCommand
+    Write-Verbose -Message "Running: '$ThisFunctionName'."
+
+    # Assume there is no licenseProfile yet
+    [System.Boolean]$HasLP = $false
+
+    # Try to GET the licenseProfile from ARM
+    $Response = Invoke-AzRestMethod -Method 'GET' -SubscriptionId $Machine.SubscriptionId -ResourceGroupName $Machine.ResourceGroup `
+        -ResourceProviderName "Microsoft.HybridCompute" -ResourceType "machines/$($Machine.Name)/licenseProfiles" `
+        -Name 'default' -ApiVersion '2025-01-13' -ErrorAction SilentlyContinue
+
+    if (200 -eq $Response.StatusCode) {
+        Write-Verbose -Message "Machine: '$($Machine.Name)' has a licenseProfile."
+        $HasLP = $true
+    }
+    elseif (404 -eq $Response.StatusCode) {
+        Write-Verbose -Message "Machine: '$($Machine.Name)' does not have a licenseProfile."
+        $HasLP = $false
+    }
+    else {
+        Write-Warning -Message "Machine: '$($Machine.Name)'. Unexpected response code getting licenseProfile: '$($Response.StatusCode)'."
+        throw "Unexpected response code getting licenseProfile: '$($Response.StatusCode)'. $($_.ErrorDetails.Message)"
+    }
+
+    # Return result
+    $HasLP
 }
 
 function EnrollMachine {
@@ -240,19 +272,16 @@ function EnrollMachine {
     [System.String]$MachineResourceGroupName = $Machine.resourceGroup
     [System.String]$MachineLocation = $Machine.Location
     [System.String]$MachineResourceID = $Machine.id
-    [System.String]$ChangeURI = [System.String]::Concat($ResourceManagerURL,'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
+    [System.String]$ChangeURI = [System.String]::Concat($ResourceManagerURL, 'subscriptions/', $MachineSubscriptionID, '/resourceGroups/', $MachineResourceGroupName, '/providers/Microsoft.HybridCompute/machines/', $MachineName, '/licenseProfiles/default?api-version=', $ARMAPIVersion)
 
-    [System.Uri]$ChangeURIObj = [System.Uri]::new( $ChangeURI )
-    [System.String]$ChangeURIAbsolute = $ChangeURIObj.AbsoluteUri
-
-    Write-Verbose -Message "Change URI: $ChangeURIAbsolute"
+    Write-Verbose -Message "URI: $ChangeURI"
 
     [System.String]$ContentType = 'application/json'
 
     Write-Verbose -Message 'Creating new properties object.'
     [System.Collections.Hashtable]$NewPropertiesState = @{
         softwareAssurance = @{
-            softwareAssuranceCustomer= $true;
+            softwareAssuranceCustomer = $true;
         };
     };
 
@@ -313,32 +342,34 @@ function EnrollMachine {
         if ($PSCmdlet.ShouldProcess($MachineName)) {
             Write-Verbose -Message "Creating call to Azure REST API using method: '$RestMethod'."
             Write-Verbose -Message "Enabling Windows Server Management by Azure Arc on Server: '$MachineName'."
-            $Response = Invoke-RestMethod -Method $RestMethod -Uri $ChangeURIAbsolute -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
+            $Response = Invoke-RestMethod -Method $RestMethod -Uri $ChangeURI -ContentType $ContentType -Headers $BearerTokenHeaderTable -Body $JSON
             $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
             $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
             $ResponseTable.Add('Result', 'Success')
             $ResponseTable.Add('ErrorMessage', '')
+            $ResponseTable.Add('Method', $RestMethod)
             Write-Verbose -Message "Machine: '$MachineName'. Result: 'Success'."
         }
         else {
             # Putting in a call to Write-Information because Invoke-RestMethod doesn't support 'WhatIf'.
             # This may be short lived once changed to Invoke-AzRestMethod, which does.
             [System.String]$JSONString = [System.Convert]::ToString($JSON)
-            Write-Verbose -Message "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$ChangeURIAbsolute', ContentType - '$ContentType', Body - '$JSONString'."
+            Write-Verbose -Message "Would run 'Invoke-RestMethod' with the following parameter values: Method - '$RestMethod', URI - '$ChangeURI', ContentType - '$ContentType', Body - '$JSONString'."
             Write-Verbose -Message "Machine: '$MachineName'. Result: 'WhatIf'."
             $ResponseTable.Add('ProvisioningState', 'N/A - WhatIf')
             $ResponseTable.Add('SoftwareAssurance', 'N/A - WhatIf')
             $ResponseTable.Add('Result', 'N/A - WhatIf')
             $ResponseTable.Add('ErrorMessage', 'N/A - WhatIf')
+            $ResponseTable.Add('Method', $RestMethod)
         }
     }
     catch {
-        Write-Warning -Message "Machine: '$MachineName'. Result: 'Error'. Continuing."
-        $Response
+        Write-Warning -Message "Machine: '$MachineName'. Result: 'Error. See error details in output table.'. Continuing."
         $ResponseTable.Add('ProvisioningState', $Response.Properties.provisioningState)
         $ResponseTable.Add('SoftwareAssurance', $Response.Properties.softwareAssurance)
         $ResponseTable.Add('Result', 'Error')
-        $ResponseTable.Add('ErrorMessage', $_.Errordetails.Message)
+        $ResponseTable.Add('ErrorMessage', $_.ErrorDetails.Message)
+        $ResponseTable.Add('Method', $RestMethod)
     }
 
     $ResponseTable
@@ -368,8 +399,12 @@ if (1 -le $MachinesArrayCount) {
         [System.String]$MachineName = $Machine.Name
 
         Write-Verbose -Message "Working on server: '$MachineName'. Server: '$j' of: '$MachinesArrayCount' servers."
+        
+        [bool]$HasLP = MachineHasLicenseProfile -Machine $Machine
+        [string]$RestMethod = $HasLP ? 'PATCH' : 'PUT'
+
         ## Enrollment
-        $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable
+        $Response = EnrollMachine -ResourceManagerURL $AzureResourceManagerURL -Machine $Machine -BearerTokenHeaderTable $BearerTokenHeaderTable -RestMethod $RestMethod
 
         $ResponseArray.Add($Response) | Out-Null
 
@@ -383,7 +418,7 @@ else {
 ### BEGIN: REPORT ###
 if (0 -lt $ResponseArray.Count) {
     Write-Verbose -Message 'Results: '
-    $ResponseArray | Select-Object -Property 'MachineName', 'Result', 'SoftwareAssurance', 'ResourceID' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
+    $ResponseArray | Select-Object -Property 'MachineName', 'Result', 'SoftwareAssurance', 'ResourceID', 'Method' | Sort-Object -Property 'ResourceID' | Format-Table -AutoSize
 
     [System.Int64]$LogicalCoreCount = 0
     $ResponseArray | ForEach-Object -Process {
