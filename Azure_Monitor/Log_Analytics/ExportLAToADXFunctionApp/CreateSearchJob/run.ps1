@@ -289,8 +289,6 @@ $LAWTableName
         $SearchTableStatusCodeArray.Add($_) | Out-Null
     }
 
-    $SearchTableStatusCodeArray.Add(400) # Add 400 to the array since if the search query is bad, the API will return a 400, but it still means the search job was created, just with a bad query. This allows us to differentiate between a failed search job creation and a search job creation with a bad query.
-
     if ($NewSearchTableStatusCode -in $SearchTableStatusCodeArray) {
         Write-ToLog -Stream 'Information' -MessageData "New search job request processing. Status code: '$NewSearchTableStatusCode'."
     }

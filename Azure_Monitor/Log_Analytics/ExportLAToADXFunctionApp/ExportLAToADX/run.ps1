@@ -509,7 +509,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     )
 
     $command = @"
-.set-or-append Syslog <|
+.set-or-append $LAWTableName <|
 cluster('$LAWClusterURI')
 .database('$LAWDBName')
 .$SearchJobTableName
