@@ -398,14 +398,12 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     ##
     $LAWTableName = $Using:LAWTableName
     $GetWorkspace = $Using:GetWorkspace
-    $OutDirFullPath = $Using:OutDirFullPath
-    $ctx = $Using:ctx
-    $StorageAccountContainerName = $Using:StorageAccountContainerName
     $IsSearchJob = $Using:IsSearchJob
     $clusterUrl   = $Using:clusterUrl
     $ADXDatabaseName = $Using:ADXDatabaseName
     $LAWClusterURI = $Using:LAWClusterURI
     $LAWDBName = $Using:LAWDBName
+    $SearchJobTableName = $Using:SearchJobTableName
     $ADXTimeoutMinutes = $Using:ADXTimeoutMinutes
 
     [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
