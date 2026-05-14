@@ -66,6 +66,23 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
+### START: LOAD MODULES ###
+[System.Collections.ArrayList]$ModulesToImport = @(
+    'Az.Accounts',
+    'Az.Resources'
+)
+
+[System.Int32]$i = 1
+[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
+
+Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
+foreach ($Module in $ModulesToImport) {
+    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
+    Import-Module -Name $Module *> $null
+    $i++
+}
+Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
+### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -162,97 +179,6 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
-# Storage Account Resource ID
-[System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
-if (-not $StorageAccountResourceID) {
-    [System.String]$StorageAccountResourceID = $Request.Body.StorageAccountResourceID
-}
-
-if ($StorageAccountResourceID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Resource ID was not provided in the query parameters or the request body. Please provide a valid Storage Account Resource ID and try again.'
-    throw 'Storage Account Resource ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
-}
-
-# Storage Account Container Name
-[System.String]$StorageAccountContainerName = $Request.Query.StorageAccountContainerName
-if (-not $StorageAccountContainerName) {
-    [System.String]$StorageAccountContainerName = $Request.Body.StorageAccountContainerName
-}
-
-if ($StorageAccountContainerName -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Container Name was not provided in the query parameters or the request body. Please provide a valid Storage Account Container Name and try again.'
-    throw 'Storage Account Container Name is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
-}
-
-# Parallelism through PowerShell
-[System.Int32]$Parallelism = $Request.Query.Parallelism
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = $Request.Body.Parallelism
-}
-
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = 5
-    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
-}
-Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
-
-# Log Output local directory name (within the Function App)
-[System.String]$OutDirName = $Request.Query.OutDir
-if (-not $OutDirName) {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-elseif ($OutDirName.Length -lt 1) {
-    [System.String]$OutDirName = 'la-export'
-}
-else {
-    [System.String]$OutDirName = 'la-export'
-}
-
-if ($OutDirName -in @('', $null)) {
-    [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
-}
-else {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
-
-# Remove the exported logs from Log Analytics (careful with this)
-[System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
-if (-not $RemoveLALogs) {
-    [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Body.RemoveLALogs)
-}
-else {
-    [System.Boolean]$RemoveLALogs = $false
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics after export: '$RemoveLALogs'."
-
-# The API Version of the Delete API used to remove the exported logs from Log Analytics
-[System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
-
-    if ($DeleteAPIVersion -in @('',$null)) {
-        [System.String]$DeleteAPIVersion = '2023-09-01'
-    }
-}
-elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-else {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIVersion'."
-
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
 [System.String]$LAWSubscriptionID = $LAWRIDArray[2]
@@ -267,7 +193,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -302,8 +228,8 @@ if ($true -eq $IsSearchJob) {
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m'
+    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m%d'
+    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m%d'
 
     # Restrict new table name to LA table naming restrictions
     # SecurityEvent_2604_2604_SRCH
@@ -314,25 +240,40 @@ if ($true -eq $IsSearchJob) {
 
 ### END: GET LAW & SET SEARCH JOB VARIABLES ###
 ### START: SEARCH JOB TABLE DELETION ###
-if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream 'Information' -MessageData 'Trying to remove Search Job table.'
-    try {
-        $ErrorActionPreference = 'Stop'
-        [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$SearchJobTableName,'?api-version=2021-12-01-preview')
-        Write-ToLog -Stream 'Verbose' -MessageData "Table delete string: '$TableDeleteString'."
 
-        Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
+
+
+if ($true -eq $IsSearchJob) {
+    Write-ToLog -Stream 'Information' -MessageData "Checking for existence of search job table named: '$SearchJobTableName'."
+    $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
+    if ($GetSearchTable) {
+        Write-ToLog -Stream 'Information' -MessageData "Found search job table named: '$SearchJobTableName'. Attempting to delete it."
+        try {
+            $ErrorActionPreference = 'Stop'
+            [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$SearchJobTableName,'?api-version=2021-12-01-preview')
+            Write-ToLog -Stream 'Verbose' -MessageData "Table delete string: '$TableDeleteString'."
+
+            Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
+        }
+        catch {
+            $_
+            Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$SearchJobTableName' using path: '$TableDeleteString'."
+            throw
+        }
     }
-    catch {
-        $_
-        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$SearchJobTableName' using path: '$TableDeleteString'."
-        throw
+    else {
+        Write-ToLog -Stream 'Information' -MessageData "Did not find search job table named: '$SearchJobTableName'. No need to delete it."
     }
 }
 ### END: SEARCH JOB TABLE DELETION ###
 
 #### Push output binding ####
-[System.String]$BodyMessage = 'Exiting!'
+if ($true -eq $IsSearchJob) {
+    [System.String]$BodyMessage = "Deleted search job table named: '$SearchJobTableName'. Exiting."
+}
+else {
+    [System.String]$BodyMessage = "'IsSearchJob' is set to: '$IsSearchJob' so not deleting a search job table. Exiting."
+}
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

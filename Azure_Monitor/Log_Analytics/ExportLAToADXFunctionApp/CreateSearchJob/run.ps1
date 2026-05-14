@@ -250,6 +250,17 @@ $LAWTableName
     [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
     Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
 
+    Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
+    Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
+    $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
+    if ($GetSearchTable) {
+        Write-ToLog -Stream 'Error' -MessageData "Search job table with name: '$SearchJobTableName' already exists. Please choose a different name for the search job table and try again."
+        throw "Search job table with name: '$SearchJobTableName' already exists."
+    }
+    else {
+        Write-ToLog -Stream 'Information' -MessageData "No existing search job table with name: '$SearchJobTableName' was found. Proceeding with search job creation."
+    }
+
     $SearchTableAPIBody = [ordered]@{
         'properties' = @{
             'searchResults' = @{
@@ -272,7 +283,7 @@ $LAWTableName
     }
 }
     #>
-    Write-ToLog -Stream 'Information' -MessageData "Creating serach job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
+    Write-ToLog -Stream 'Information' -MessageData "Creating search job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
 
     try {
         $ErrorActionPreference = 'Stop'
@@ -286,7 +297,14 @@ $LAWTableName
         throw
     }
     [System.Int32]$NewSearchTableStatusCode = $NewSearchTable.StatusCode
-    if ($NewSearchTableStatusCode -in @('202', '200')) {
+    [System.Collections.ArrayList]$SearchTableStatusCodeArray = @()
+    200..299 | ForEach-Object -Process {
+        $SearchTableStatusCodeArray.Add($_) | Out-Null
+    }
+
+    $SearchTableStatusCodeArray.Add(400) # Add 400 to the array since if the search query is bad, the API will return a 400, but it still means the search job was created, just with a bad query. This allows us to differentiate between a failed search job creation and a search job creation with a bad query.
+
+    if ($NewSearchTableStatusCode -in $SearchTableStatusCodeArray) {
         Write-ToLog -Stream 'Information' -MessageData "New search job request processing. Status code: '$NewSearchTableStatusCode'."
     }
     else {
