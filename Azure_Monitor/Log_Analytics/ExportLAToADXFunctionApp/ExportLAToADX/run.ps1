@@ -68,8 +68,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: LOAD MODULES ###
 [System.Collections.ArrayList]$ModulesToImport = @(
-    'Az.Accounts',
-    'Az.Resources'
+    'Az.Accounts'
 )
 
 [System.Int32]$i = 1
@@ -213,34 +212,6 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
-# Storage Account Resource ID
-[System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
-if (-not $StorageAccountResourceID) {
-    [System.String]$StorageAccountResourceID = $Request.Body.StorageAccountResourceID
-}
-
-if ($StorageAccountResourceID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Resource ID was not provided in the query parameters or the request body. Please provide a valid Storage Account Resource ID and try again.'
-    throw 'Storage Account Resource ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
-}
-
-# Storage Account Container Name
-[System.String]$StorageAccountContainerName = $Request.Query.StorageAccountContainerName
-if (-not $StorageAccountContainerName) {
-    [System.String]$StorageAccountContainerName = $Request.Body.StorageAccountContainerName
-}
-
-if ($StorageAccountContainerName -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Container Name was not provided in the query parameters or the request body. Please provide a valid Storage Account Container Name and try again.'
-    throw 'Storage Account Container Name is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
-}
-
 # Parallelism through PowerShell
 [System.Int32]$Parallelism = $Request.Query.Parallelism
 if ((-not $Parallelism) -or ($Parallelism -le 0)) {
@@ -252,35 +223,6 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
     Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
 }
 Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
-
-# Remove the exported logs from Log Analytics (careful with this)
-[System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
-if (-not $RemoveLALogs) {
-    [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Body.RemoveLALogs)
-}
-else {
-    [System.Boolean]$RemoveLALogs = $false
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics after export: '$RemoveLALogs'."
-
-# The API Version of the Delete API used to remove the exported logs from Log Analytics
-[System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
-
-    if ($DeleteAPIVersion -in @('',$null)) {
-        [System.String]$DeleteAPIVersion = '2023-09-01'
-    }
-}
-elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-else {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIVersion'."
 
 # ADX Timeout Value (in minutes) for the .set-or-append command
 [System.Int32]$ADXTimeoutMinutes = $Request.Query.ADXTimeoutMinutes
