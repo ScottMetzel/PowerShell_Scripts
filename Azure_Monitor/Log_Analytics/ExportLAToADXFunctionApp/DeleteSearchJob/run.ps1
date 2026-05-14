@@ -234,7 +234,7 @@ if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
     Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
     $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
-    if ($GetSearchTable) {
+    if ($GetSearchTable.StatusCode -eq 200) {
         Write-ToLog -Stream 'Information' -MessageData "Found search job table named: '$SearchJobTableName'. Attempting to delete it."
         try {
             $ErrorActionPreference = 'Stop'

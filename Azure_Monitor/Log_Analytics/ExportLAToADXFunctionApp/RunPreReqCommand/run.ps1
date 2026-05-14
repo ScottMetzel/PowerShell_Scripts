@@ -68,7 +68,8 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: LOAD MODULES ###
 [System.Collections.ArrayList]$ModulesToImport = @(
-    'Az.Accounts'
+    'Az.Accounts',
+    'Az.Resources'
 )
 
 [System.Int32]$i = 1
@@ -77,7 +78,13 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
 foreach ($Module in $ModulesToImport) {
     Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-    Import-Module -Name $Module *> $null
+    $PreviousVerbosePreference = $VerbosePreference
+    $PreviousInformationPreference = $InformationPreference
+    $VerbosePreference = 'SilentlyContinue'
+    $InformationPreference = 'SilentlyContinue'
+    Import-Module -Name $Module -Verbose:$false *> $null
+    $VerbosePreference = $PreviousVerbosePreference
+    $InformationPreference = $PreviousInformationPreference
     $i++
 }
 Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
@@ -85,18 +92,46 @@ Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
-# Entra Tenant ID
-[System.String]$EntraTenantID = $Request.Query.EntraTenantID
-if (-not $EntraTenantID) {
-    [System.String]$EntraTenantID = $Request.Body.EntraTenantID
+# ADX Cluster URI
+[System.String]$ADXClusterURI = $Request.Query.ADXClusterURI
+if (-not $ADXClusterURI) {
+    [System.String]$ADXClusterURI = $Request.Body.ADXClusterURI
 }
 
-if ($EntraTenantID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Entra Tenant ID was not provided in the query parameters or the request body. Please provide a valid Entra Tenant ID and try again.'
-    throw 'Entra Tenant ID is required.'
+if ($ADXClusterURI -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Cluster URI was not provided in the query parameters or the request body. Please provide a valid ADX Cluster URI and try again.'
+    throw 'ADX Cluster URI is required.'
 }
 else {
-    Write-ToLog -Stream 'Information' -MessageData "Entra Tenant ID: '$EntraTenantID'."
+    Write-ToLog -Stream 'Information' -MessageData "ADX Cluster URI: '$ADXClusterURI'."
+}
+
+# ADX Database Name
+[System.String]$ADXDatabaseName = $Request.Query.ADXDatabaseName
+if (-not $ADXDatabaseName) {
+    [System.String]$ADXDatabaseName = $Request.Body.ADXDatabaseName
+}
+
+if ($ADXDatabaseName -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Database Name was not provided in the query parameters or the request body. Please provide a valid ADX Database Name and try again.'
+    throw 'ADX Database Name is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Database Name: '$ADXDatabaseName'."
+}
+
+# Command to execute in ADX (Kusto) to ensure the database exists and is ready for ingestion
+[System.String]$ADXCommand = $Request.Query.ADXCommand
+if (-not $ADXCommand) {
+    [System.String]$ADXCommand = $Request.Body.ADXCommand
+}
+
+if ($ADXCommand -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Command was not provided in the query parameters or the request body. Please provide a valid ADX Command and try again.'
+    throw 'ADX Command is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Command: '$ADXCommand'."
 }
 
 # Log Analytics Resource ID
@@ -178,21 +213,29 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
+# ADX Timeout Value (in minutes) for the .set-or-append command
+[System.Int32]$ADXTimeoutMinutes = $Request.Query.ADXTimeoutMinutes
+if ((-not $ADXTimeoutMinutes) -or ($ADXTimeoutMinutes -le 0)) {
+    [System.Int32]$ADXTimeoutMinutes = $Request.Body.ADXTimeoutMinutes
+}
+
+if ((-not $ADXTimeoutMinutes) -or ($ADXTimeoutMinutes -le 0)) {
+    [System.Int32]$ADXTimeoutMinutes = 10
+    Write-ToLog -Stream 'Warning' -MessageData "ADX Timeout Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$ADXTimeoutMinutes'."
+}
+Write-ToLog -Stream 'Information' -MessageData "ADX Timeout Minutes for this run is set to: '$ADXTimeoutMinutes'."
+
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
 [System.String]$LAWSubscriptionID = $LAWRIDArray[2]
-[System.String]$LAWResourceGroupName = $LAWRIDArray[4]
-[System.String]$LAWorkspaceName = $LAWRIDArray[-1]
-
 Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request parameters.'
-
 ### END: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 ### START: CONNECT TO AZURE ###
 # Ensures you do not inherit an AzContext in your runbook
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -201,7 +244,7 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-
+### START: SET DATE TIME UTC
 [System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
 [System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
@@ -210,9 +253,10 @@ if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
 else {
     Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
 }
-
+### END: SET DATE TIME UTC
+### START: IS SEARCH JOB? ###
 if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream 'Warning' -MessageData 'Search job should have been executed in a prior run.'
+    Write-ToLog -Stream 'Warning' -MessageData 'Configuring run to query against a search job table.'
 
     [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
     [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
@@ -223,45 +267,93 @@ if ($true -eq $IsSearchJob) {
     # SecurityEvent_2604_2604_SRCH
     [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
 
-    Write-ToLog -Stream 'Verbose' -MessageData 'Table name to search is now search job table name.'
-}
-
-### END: GET LAW & SET SEARCH JOB VARIABLES ###
-### START: SEARCH JOB TABLE DELETION ###
-if ($true -eq $IsSearchJob) {
-    [System.String]$TablesAPIVersion = '2025-07-01'
-    [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
-    Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
-    Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
-    $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
-    if ($GetSearchTable) {
-        Write-ToLog -Stream 'Information' -MessageData "Found search job table named: '$SearchJobTableName'. Attempting to delete it."
-        try {
-            $ErrorActionPreference = 'Stop'
-            [System.String]$TableDeleteString = [System.String]::Concat($LAWResourceID, '/tables/',$SearchJobTableName,'?api-version=2021-12-01-preview')
-            Write-ToLog -Stream 'Verbose' -MessageData "Table delete string: '$TableDeleteString'."
-
-            Invoke-AzRestMethod -Path $TableDeleteString -Method DELETE -WaitForCompletion
-        }
-        catch {
-            $_
-            Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete table: '$SearchJobTableName' using path: '$TableDeleteString'."
-            throw
-        }
-    }
-    else {
-        Write-ToLog -Stream 'Information' -MessageData "Did not find search job table named: '$SearchJobTableName'. No need to delete it."
-    }
-}
-### END: SEARCH JOB TABLE DELETION ###
-
-#### Push output binding ####
-if ($true -eq $IsSearchJob) {
-    [System.String]$BodyMessage = "Deleted search job table named: '$SearchJobTableName'. Exiting."
+    # Set the table to query to the name of the search table.
+    [System.String]$LAWTableName = $SearchJobTableName
+    Write-ToLog -Stream 'Verbose' -MessageData "Table name to search is now search job table name: '$SearchJobTableName'."
 }
 else {
-    [System.String]$BodyMessage = "'IsSearchJob' is set to: '$IsSearchJob' so not deleting a search job table. Exiting."
+    Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
+### END: IS SEARCH JOB? ###
+### START: DEFINE STATIC VARIABLES ###
+[System.String]$clusterUrl   = [System.String]::Concat($ADXClusterURI)
+### END: DEFINE STATIC VARIABLES ###
+### START: RUN PREREQS ###
+
+# Load SDK — point to wherever you have Kusto.Data.dll
+[System.String]$KustoToolsPath = (Resolve-Path -Path '.\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
+[System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
+
+Write-ToLog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+try {
+    $ErrorActionPreference = 'Stop'
+    [System.Reflection.Assembly]::LoadFrom($KustoToolsDataDllPath)
+}
+catch {
+    Write-ToLog -Stream 'Error' -MessageData "An error occurred while loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+    throw
+}
+
+# Build connection
+Write-ToLog -Stream 'Information' -MessageData "Building Kusto connection string to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
+$kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
+
+# Add System-Assigned Managed Identity (MSI) authentication to the connection string
+Write-ToLog -Stream 'Information' -MessageData 'Adding System-Assigned Managed Identity (MSI) authentication to Kusto connection string.'
+$kcsb = $kcsb.WithAadSystemManagedIdentity()
+
+# ← Admin provider, not query provider
+Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Admin Provider to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
+$adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
+
+# Request properties
+Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Client Request Properties with timeout of: '$ADXTimeoutMinutes' minutes."
+$crp = New-Object Kusto.Data.Common.ClientRequestProperties
+$crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
+$crp.SetOption(
+    [Kusto.Data.Common.ClientRequestProperties]::OptionServerTimeout,
+    [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
+)
+
+# ← ExecuteControlCommand, not ExecuteQuery
+Write-ToLog -Stream 'Information' -MessageData "Executing control command: '$ADXCommand'."
+try {
+    $ErrorActionPreference = 'Stop'
+    $adminProvider.ExecuteControlCommand($ADXDatabaseName, $ADXCommand, $crp)
+}
+catch {
+    $_
+    Write-ToLog -Stream 'Error' -MessageData "An error occurred while executing control command: '$ADXCommand' against database: '$ADXDatabaseName'."
+    throw
+}
+
+#Write-ToLog -Stream 'Information' -MessageData 'Converting Kusto Data Reader to DataSet and retrieving first table.'
+#$table = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($ExecuteCommand).Tables[0]
+
+# Async command returns a single row with the OperationId
+# $opId = $table.Rows[0]['OperationId']
+# Write-ToLog -Stream 'Information' -MessageData "Submitted — OperationId: $opId"
+
+# # --- Poll for completion ---
+# Write-ToLog -Stream 'Information' -MessageData "Polling for completion of operation ID: '$opId'."
+# $pollCommand = ".show operations $opId"
+# do {
+#     Start-Sleep -Seconds 15
+#     $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
+#     $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
+#     $state      = $pollTable.Rows[0]['State']
+#     Write-ToLog -Stream 'Information' -MessageData "  ↻ $state"
+# } while ($state -notin @('Completed', 'Failed', 'Abandoned'))
+
+# if ($state -ne 'Completed') {
+#     Write-Warning "❌ Failed — check: .show operation details $opId"
+# }
+# else {
+#     Write-ToLog -Stream 'Information' -MessageData '✅ Done'
+# }
+### END: RUN PREREQS ###
+#### Push output binding ####
+[System.String]$BodyMessage = 'Done executing prerequisite command. Exiting.'
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

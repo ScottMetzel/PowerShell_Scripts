@@ -66,23 +66,6 @@ function Write-ToLog {
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
-### START: LOAD MODULES ###
-[System.Collections.ArrayList]$ModulesToImport = @(
-    'Az.Accounts',
-    'Az.Resources'
-)
-
-[System.Int32]$i = 1
-[System.Int32]$ModulesToImportCount = $ModulesToImport.Count
-
-Write-ToLog -Stream 'Information' -MessageData 'Importing PowerShell modules.'
-foreach ($Module in $ModulesToImport) {
-    Write-ToLog -Stream 'Verbose' -MessageData "Importing module: '$Module'. Module: '$i' of: '$ModulesToImportCount' modules."
-    Import-Module -Name $Module *> $null
-    $i++
-}
-Write-ToLog -Stream 'Information' -MessageData 'Finished loading modules.'
-### END: LOAD MODULES ###
 ### START: DERIVE VARIABLES FROM REQUEST PARAMETER ###
 Write-ToLog -Stream 'Verbose' -MessageData 'Deriving variables from request parameters...'
 
@@ -284,7 +267,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -293,7 +276,7 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: GET LAW & CREATE SEARCH JOB ###
+### START: GET LAW ###
 Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
 $GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
 
@@ -304,136 +287,74 @@ else {
     Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
     throw
 }
+### END: GET LAW ###
+### START: DELETE FROM LAw ###
+if ($true -eq $RemoveLALogs) {
+    Write-ToLog -Stream 'Warning' -MessageData "Will remove Log Analytics logs from table: '$LAWTableName' between: '$FromDateTimeUTC' and: '$ToDateTimeUTC'."
+    [System.DateTime]$DeleteAPIStartTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
+    [System.DateTime]$DeleteAPIEndTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
+    [System.String]$DeleteAPIStartTimeFormatted = Get-Date -Date $DeleteAPIStartTime -Format 'yyyy-MM-ddTHH:mm:ss'
+    [System.String]$DeleteAPIEndTimeFormatted = Get-Date -Date $DeleteAPIEndTime -Format 'yyyy-MM-ddTHH:mm:ss'
+    [System.String]$DeleteAPIURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourceGroups/', $LAWResourceGroupName, '/providers/microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '/tables/',$LAWTableName,'/deleteData?api-version=',$DeleteAPIVersion)
 
-[System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
-[System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
-if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
-    Write-ToLog -Stream 'Verbose' -MessageData "To date time: '$ToDateTimeUTC' is greater than from date time: '$FromDateTimeUTC'. Entering main query loop."
-}
-else {
-    Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
-}
-
-if ($true -eq $IsSearchJob) {
-    Write-ToLog -Stream 'Warning' -MessageData 'Executing a search job for this run. This may lengthen overall runbook execution time.'
-
-    [System.DateTime]$SearchJobStartDateTime = $FromDateTimeUTCDateTime
-    [System.DateTime]$SearchJobEndDateTime = $ToDateTimeUTCDateTime
-    [System.String]$SearchJobTableNameStartDate = Get-Date -Date $SearchJobStartDateTime -UFormat '%y%m%d'
-    [System.String]$SearchJobTableNameEndDate = Get-Date -Date $SearchJobEndDateTime -UFormat '%y%m%d'
-
-    # Slice via KQL time filter (portable and explicit)
-    [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
-    [System.String]$ToDateTimeUTCDateTimeStringLowercase = $ToDateTimeUTCDateTime.ToString('o')
-
-    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$ToDateTimeUTCDateTimeStringLowercase'."
-    $KQLQuery = @"
-$LAWTableName
-"@
-    Write-ToLog -Stream 'Information' -MessageData "KQL Query to execute: '$KQLQuery'."
-
-    # Restrict new table name to LA table naming restrictions
-    [System.String]$SearchJobTableName = [System.String]::Concat($LAWTableName,'_',$SearchJobTableNameStartDate,'_',$SearchJobTableNameEndDate,'_SRCH')
-
-    Write-ToLog -Stream 'Information' -MessageData "Creating search job table name is: '$SearchJobTableName'."
-
-    [System.String]$TablesAPIVersion = '2025-07-01'
-    [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
-    Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
-
-    $SearchTableAPIBody = [ordered]@{
-        'properties' = @{
-            'searchResults' = @{
-                query           = $KQLQuery
-                startSearchTime = $FromDateTimeUTCDateTime;
-                endSearchTime   = $ToDateTimeUTCDateTime;
+    $DeleteAPIBody = @{
+        filters = @(
+            @{
+                column   = 'TimeGenerated'
+                operator = '>'
+                value    = $DeleteAPIStartTimeFormatted
+            },
+            @{
+                column   = 'TimeGenerated'
+                operator = '<'
+                value    = $DeleteAPIEndTimeFormatted
             }
-        }
-    }
-    $SearchTableAPIBodyJSON = ConvertTo-Json -InputObject $SearchTableAPIBody -Depth 10
-    <#
-    {
-    "properties": {
-        "searchResults": {
-                "query": "Syslog | where * has 'suspected.exe'",
-                "limit": 1000,
-                "startSearchTime": "2025-01-01T00:00:00Z",
-                "endSearchTime": "2025-11-30T00:00:00Z"
-            }
-    }
-}
-    #>
-    Write-ToLog -Stream 'Information' -MessageData "Creating serach job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
+        )
+    } | ConvertTo-Json -Depth 3
 
+    # Make the POST request
     try {
         $ErrorActionPreference = 'Stop'
-        $NewSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method PUT -Payload $SearchTableAPIBodyJSON
-        #New-AzOperationalInsightsSearchTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -SearchQuery $KQLQuery -StartSearchTime $FromDateTimeUTCDateTime -EndSearchTime $SearchJobEndDateTime -RetentionInDays -1 -AsJob
-        Write-ToLog -Stream 'Verbose' -MessageData 'Search job table creation request submitted.'
+        $Response = Invoke-AzRestMethod -Uri $DeleteAPIURI -Method POST -Payload $DeleteAPIBody
+        Write-ToLog -Stream 'Information' -MessageData "Successfully submitted delete request to table: '$LAWTableName' using URI: '$DeleteAPIURI' with body: '$DeleteAPIBody'."
     }
     catch {
         $_
-        Write-ToLog -Stream 'Error' -MessageData 'An error occurred while creating the Search Job table.'
-        throw
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to delete logs from table: '$LAWTableName' using URI: '$DeleteAPIURI' with body: '$DeleteAPIBody'."
     }
-    [System.Int32]$NewSearchTableStatusCode = $NewSearchTable.StatusCode
-    if ($NewSearchTableStatusCode -in @('202', '200')) {
-        Write-ToLog -Stream 'Information' -MessageData "New search job request processing. Status code: '$NewSearchTableStatusCode'."
+
+    # Check for operation status URL in headers
+    $operationId = $Response.Headers['Azure-AsyncOperation']
+    if (-not $operationId) {
+        $operationId = $Response.Headers['Location']
+    }
+
+    if ($operationId) {
+        $operationUrl = $operationId[0]  # Take first value
+        Write-ToLog -Stream 'Verbose' -MessageData "Polling operation status at: $operationUrl"
+
+        while ($true) {
+            $statusResponse = Invoke-RestMethod -Uri $operationUrl -Headers $headers -Method Get
+            Write-ToLog -Stream 'Verbose' -MessageData "Status: $($statusResponse.status)"
+            if ($statusResponse.status -eq 'Succeeded' -or $statusResponse.status -eq 'Failed') {
+                Write-ToLog -Stream 'Verbose' -MessageData "Final status: $($statusResponse.status)"
+                break
+            }
+            Start-Sleep -Seconds 30 # Check status every 30 seconds
+        }
     }
     else {
-        Write-ToLog -Stream 'Error' -MessageData "New search job request error code: '$NewSearchTableStatusCode'."
-        throw
-    }
-
-    # Set the table to query to the name of the search table.
-    [System.String]$LAWTableName = $SearchJobTableName
-    Write-ToLog -Stream 'Verbose' -MessageData 'Table name to search is now search job table name.'
-
-    # Wait to query until the table's available.
-    [System.Boolean]$SearchJobTableCreated = $false
-    [System.Int32]$SearchJobTimeoutSeconds = 86400
-    [System.Int32]$CurrentSeconds = 0
-    [System.Int32]$SleepSeconds = 10
-
-    while ($false -eq $SearchJobTableCreated) {
-        Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
-        $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET
-        $SearchTableContentTable = ConvertFrom-Json -InputObject $GetSearchTable.Content -AsHashtable -Depth 10
-        #$GetSearchTable = Get-AzOperationalInsightsTable -ResourceGroupName $LAWResourceGroupName -WorkspaceName $LAWorkspaceName -TableName $SearchJobTableName -ErrorAction SilentlyContinue
-        [System.String]$SearchTableProvisioningState = $SearchTableContentTable.properties.provisioningState
-        if ('Succeeded' -eq $SearchTableProvisioningState) {
-            [System.Boolean]$SearchJobTableCreated = $true
-            Write-ToLog -Stream 'Information' -MessageData "Search job table is available! Status: '$SearchTableProvisioningState'"
-        }
-        elseif ($SearchTableProvisioningState -in @('Failed', 'Error')) {
-            Write-ToLog -Stream 'Error' -MessageData "Creation of search job table failed. Status: '$SearchTableProvisioningState'"
-            throw
-        }
-        else {
-            Write-ToLog -Stream 'Information' -MessageData "Search job table not available yet. Status: '$SearchTableProvisioningState'. Waiting 10 seconds."
-            [System.Int32]$CurrentSeconds = $CurrentSeconds + $SleepSeconds
-            Start-Sleep -Seconds $SleepSeconds
-
-            if ($CurrentSeconds -gt $SearchJobTimeoutSeconds) {
-                Write-ToLog -Stream 'Error' -MessageData "Search job timed out after: '$CurrentSeconds' seconds. Please try a smaller search and remember to remove table: '$SearchJobTableName' if it becomes available."
-                throw
-            }
-        }
+        Write-ToLog -Stream 'Verbose' -MessageData 'No operation tracking URL found. Response body:'
+        $Response.Content
     }
 }
 else {
-    Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
+    Write-ToLog -Stream 'Verbose' -MessageData 'Script was set to not delete any logs from Log Analytics. Moving on.'
 }
-### END: GET LAW & CREATE SEARCH JOB ###
+### END: DELETE FROM LAw ###
 
 #### Push output binding ####
-if ($IsSearchJob) {
-    [System.String]$BodyMessage = "Created search job table named: '$SearchJobTableName'. Exiting."
-}
-else {
-    [System.String]$BodyMessage = "Didn't create a search job table since IsSearchJob wasn't true."
-}
-
+[System.String]$BodyMessage = 'Exiting!'
 Write-ToLog -Stream 'Information' -MessageData $BodyMessage
 
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{

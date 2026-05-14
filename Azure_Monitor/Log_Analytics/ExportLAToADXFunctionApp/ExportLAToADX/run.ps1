@@ -68,10 +68,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: LOAD MODULES ###
 [System.Collections.ArrayList]$ModulesToImport = @(
-    'Az.Accounts',
-    'Az.OperationalInsights',
-    'Az.Resources',
-    'Az.Storage'
+    'Az.Accounts'
 )
 
 [System.Int32]$i = 1
@@ -108,6 +105,48 @@ else {
     Write-ToLog -Stream 'Information' -MessageData "Entra Tenant ID: '$EntraTenantID'."
 }
 
+# ADX Cluster URI
+[System.String]$ADXClusterURI = $Request.Query.ADXClusterURI
+if (-not $ADXClusterURI) {
+    [System.String]$ADXClusterURI = $Request.Body.ADXClusterURI
+}
+
+if ($ADXClusterURI -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Cluster URI was not provided in the query parameters or the request body. Please provide a valid ADX Cluster URI and try again.'
+    throw 'ADX Cluster URI is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Cluster URI: '$ADXClusterURI'."
+}
+
+# ADX Database Name
+[System.String]$ADXDatabaseName = $Request.Query.ADXDatabaseName
+if (-not $ADXDatabaseName) {
+    [System.String]$ADXDatabaseName = $Request.Body.ADXDatabaseName
+}
+
+if ($ADXDatabaseName -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Database Name was not provided in the query parameters or the request body. Please provide a valid ADX Database Name and try again.'
+    throw 'ADX Database Name is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Database Name: '$ADXDatabaseName'."
+}
+
+# ADX Table Name
+[System.String]$ADXTableName = $Request.Query.ADXTableName
+if (-not $ADXTableName) {
+    [System.String]$ADXTableName = $Request.Body.ADXTableName
+}
+
+if ($ADXTableName -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'ADX Table Name was not provided in the query parameters or the request body. Please provide a valid ADX Table Name and try again.'
+    throw 'ADX Table Name is required.'
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "ADX Table Name: '$ADXTableName'."
+}
+
 # Log Analytics Resource ID
 [System.String]$LAWResourceID = $Request.Query.LAWResourceID
 if (-not $LAWResourceID) {
@@ -134,6 +173,20 @@ if ($LAWTableName -in @('', $null)) {
 }
 else {
     Write-ToLog -Stream 'Information' -MessageData "Log Analytics Workspace Table Name: '$LAWTableName'."
+}
+
+# Project Clause (optional)
+[System.String]$ProjectClause = $Request.Query.ProjectClause
+if (-not $ProjectClause) {
+    [System.String]$ProjectClause = $Request.Body.ProjectClause
+}
+
+if ($ProjectClause -in @('', $null)) {
+    Write-ToLog -Stream 'Error' -MessageData 'Project Clause was not provided in the query parameters or the request body. Setting it to an empty string.'
+    [System.String]$ProjectClause = ''
+}
+else {
+    Write-ToLog -Stream 'Information' -MessageData "Project Clause: '$ProjectClause'."
 }
 
 # From Date Time in UTC
@@ -187,34 +240,6 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
-# Storage Account Resource ID
-[System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
-if (-not $StorageAccountResourceID) {
-    [System.String]$StorageAccountResourceID = $Request.Body.StorageAccountResourceID
-}
-
-if ($StorageAccountResourceID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Resource ID was not provided in the query parameters or the request body. Please provide a valid Storage Account Resource ID and try again.'
-    throw 'Storage Account Resource ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
-}
-
-# Storage Account Container Name
-[System.String]$StorageAccountContainerName = $Request.Query.StorageAccountContainerName
-if (-not $StorageAccountContainerName) {
-    [System.String]$StorageAccountContainerName = $Request.Body.StorageAccountContainerName
-}
-
-if ($StorageAccountContainerName -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Container Name was not provided in the query parameters or the request body. Please provide a valid Storage Account Container Name and try again.'
-    throw 'Storage Account Container Name is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
-}
-
 # Parallelism through PowerShell
 [System.Int32]$Parallelism = $Request.Query.Parallelism
 if ((-not $Parallelism) -or ($Parallelism -le 0)) {
@@ -227,56 +252,17 @@ if ((-not $Parallelism) -or ($Parallelism -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
 
-# Log Output local directory name (within the Function App)
-[System.String]$OutDirName = $Request.Query.OutDir
-if (-not $OutDirName) {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-elseif ($OutDirName.Length -lt 1) {
-    [System.String]$OutDirName = 'la-export'
-}
-else {
-    [System.String]$OutDirName = 'la-export'
+# ADX Timeout Value (in minutes) for the .set-or-append command
+[System.Int32]$ADXTimeoutMinutes = $Request.Query.ADXTimeoutMinutes
+if ((-not $ADXTimeoutMinutes) -or ($ADXTimeoutMinutes -le 0)) {
+    [System.Int32]$ADXTimeoutMinutes = $Request.Body.ADXTimeoutMinutes
 }
 
-if ($OutDirName -in @('', $null)) {
-    [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
+if ((-not $ADXTimeoutMinutes) -or ($ADXTimeoutMinutes -le 0)) {
+    [System.Int32]$ADXTimeoutMinutes = 10
+    Write-ToLog -Stream 'Warning' -MessageData "ADX Timeout Minutes was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$ADXTimeoutMinutes'."
 }
-else {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
-
-# Remove the exported logs from Log Analytics (careful with this)
-[System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
-if (-not $RemoveLALogs) {
-    [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Body.RemoveLALogs)
-}
-else {
-    [System.Boolean]$RemoveLALogs = $false
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics after export: '$RemoveLALogs'."
-
-# The API Version of the Delete API used to remove the exported logs from Log Analytics
-[System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
-
-    if ($DeleteAPIVersion -in @('',$null)) {
-        [System.String]$DeleteAPIVersion = '2023-09-01'
-    }
-}
-elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-else {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIVersion'."
+Write-ToLog -Stream 'Information' -MessageData "ADX Timeout Minutes for this run is set to: '$ADXTimeoutMinutes'."
 
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
@@ -292,7 +278,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Done deriving variables from request
 Write-ToLog -Stream 'Verbose' -MessageData 'Setting Azure Subscription context.'
 try {
     $ErrorActionPreference = 'Stop'
-    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop *> $null
+    Get-AzSubscription -SubscriptionId $LAWSubscriptionID | Set-AzContext -ErrorAction Stop
     Write-ToLog -Stream 'Information' -MessageData 'Context set.'
 }
 catch {
@@ -301,33 +287,17 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: READ FROM LAW ###
+### START: GET WORKSPACE & SET DATE TIME VARIABLES ###
 Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
+# GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.OperationalInsights/workspaces/{workspaceName}?api-version=2025-07-01
+$WorkspaceURI = [System.String]::Concat('https://management.azure.com/subscriptions/', $LAWSubscriptionID, '/resourceGroups/', $LAWResourceGroupName, '/providers/Microsoft.OperationalInsights/workspaces/', $LAWorkspaceName, '?api-version=2025-07-01')
+$GetWorkspace = Invoke-AzRestMethod -Method GET -Uri $WorkspaceURI -ErrorAction SilentlyContinue
 
-if ($GetWorkspace) {
+if (200 -eq $GetWorkspace.StatusCode) {
     Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
 }
 else {
     Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
-
-[System.Collections.ArrayList]$StorageAccountRIDArray = $StorageAccountResourceID.Split('/')
-
-[System.String]$StorageAccountResourceGroupName = $StorageAccountRIDArray[4]
-[System.String]$StorageAccountName = $StorageAccountRIDArray[-1]
-
-Write-ToLog -Stream 'Verbose' -MessageData "Getting storage account: '$StorageAccountName'."
-$GetAzStorageAccount = Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroupName -Name $StorageAccountName -ErrorAction SilentlyContinue
-
-if ($GetAzStorageAccount) {
-    Write-ToLog -Stream 'Information' -MessageData "Found Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
-    # Create storage account context for use with blob operations later
-    $ctx = $GetAzStorageAccount.Context
-}
-else {
-    Write-ToLog -Stream 'Error' -MessageData "Did not find Storage Account in resource group: '$StorageAccountResourceGroupName' with name: '$StorageAccountName'."
     throw
 }
 
@@ -339,7 +309,8 @@ if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
 else {
     Write-ToLog -Stream 'Warning' -MessageData "To date time: '$ToDateTimeUTC' is not greater than from date time: '$FromDateTimeUTC'. Not querying."
 }
-
+### END: GET WORKSPACE & SET DATE TIME VARIABLES ###
+### START: IS SEARCH JOB? ###
 if ($true -eq $IsSearchJob) {
     Write-ToLog -Stream 'Warning' -MessageData 'Configuring run to query against a search job table.'
 
@@ -359,29 +330,13 @@ if ($true -eq $IsSearchJob) {
 else {
     Write-ToLog -Stream 'Verbose' -MessageData "Not running a search job. Treating logs as if they're in hot tier in the LAW."
 }
-### START: CREATE TEMPORARY OUTPUT DIRECTORY ###
-[System.String]$OutDirFullPath = Join-Path -Path 'D:\Local' -ChildPath $OutDirName
-Write-ToLog -Stream 'Verbose' -MessageData "Testing for temporary output directory: '$OutDirFullPath'."
-if (-not (Test-Path -Path $OutDirFullPath)) {
-    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' does not exist. Attempting to create it."
-    try {
-        $ErrorActionPreference = 'Stop'
-        New-Item -ItemType Directory -Path $OutDirFullPath -Force *> $null
-        Write-ToLog -Stream 'Information' -MessageData "Temporary output directory: '$OutDirFullPath' created successfully."
-    }
-    catch {
-        $_
-        Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output directory: '$OutDirFullPath'."
-        throw
-    }
-}
-else {
-    Write-ToLog -Stream 'Verbose' -MessageData "Temporary output directory: '$OutDirFullPath' exists. Reusing."
-}
-
-Write-ToLog -Stream 'Verbose' -MessageData "Container will be named: '$StorageAccountContainerName' for this run."
-
-### END: CREATE TEMPORARY OUTPUT DIRECTORY ###
+### END: IS SEARCH JOB? ###
+### START: DEFINE STATIC VARIABLES ###
+# Reference Kusto Connection Strings: https://learn.microsoft.com/en-us/kusto/api/connection-strings/kusto?view=azure-data-explorer&preserve-view=true#authentication-properties-details
+[System.String]$clusterUrl = [System.String]::Concat($ADXClusterURI, '/', $ADXDatabaseName)
+$LAWClusterURI = [System.String]::Concat('https://ade.loganalytics.io/subscriptions/', $LAWSubscriptionID, '/resourcegroups/', $LAWResourceGroupName, '/providers/microsoft.operationalinsights/workspaces/', $LAWorkspaceName)
+$LAWDBName = $LAWorkspaceName
+### END: DEFINE STATIC VARIABLES ###
 ### START: BUILD TIME WINDOWS ###
 $DateTimeWindows = [ordered]@{}
 Write-ToLog -Stream 'Information' -MessageData "Building time windows from: '$FromDateTimeUTCDateTime' to: '$ToDateTimeUTCDateTime' with slice interval of '$SliceSeconds' seconds."
@@ -395,7 +350,7 @@ while ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
-    $DateTimeWindows.Add($FromDateTimeUTCDateTime, $NextTimeBlock)
+    $DateTimeWindows.Add($FromDateTimeUTCDateTimeStringLowercase, $NextTimeBlockStringLowercase)
     $FromDateTimeUTCDateTime = $NextTimeBlock
 }
 Write-ToLog -Stream 'Information' -MessageData "Built '$($DateTimeWindows.Count)' time windows for processing. Performing log searches."
@@ -447,10 +402,7 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     }
     ### START: LOAD MODULES ###
     [System.Collections.ArrayList]$ModulesToImport = @(
-        'Az.Accounts',
-        'Az.OperationalInsights',
-        'Az.Resources',
-        'Az.Storage'
+        'Az.Accounts'
     )
 
     [System.Int32]$i = 1
@@ -473,10 +425,15 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     ##
     $LAWTableName = $Using:LAWTableName
     $GetWorkspace = $Using:GetWorkspace
-    $OutDirFullPath = $Using:OutDirFullPath
-    $ctx = $Using:ctx
-    $StorageAccountContainerName = $Using:StorageAccountContainerName
     $IsSearchJob = $Using:IsSearchJob
+    $clusterUrl   = $Using:clusterUrl
+    $ADXDatabaseName = $Using:ADXDatabaseName
+    $ADXTableName = $Using:ADXTableName
+    $ProjectClause = $Using:ProjectClause
+    $LAWClusterURI = $Using:LAWClusterURI
+    $LAWDBName = $Using:LAWDBName
+    $SearchJobTableName = $Using:SearchJobTableName
+    $ADXTimeoutMinutes = $Using:ADXTimeoutMinutes
 
     [System.DateTime]$FromDateTimeUTCDateTime = $_.Key
     [System.DateTime]$NextTimeBlock = $_.Value
@@ -485,139 +442,94 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$FromDateTimeUTCDateTimeStringLowercase = $FromDateTimeUTCDateTime.ToString('o')
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
-    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
-    if ($true -eq $IsSearchJob) {
-        Write-ToLog -Stream 'Verbose' -MessageData 'Setting KQL query to look for logs in a search job table.'
-        $KQLQuery = @"
-$LAWTableName
-| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
-| order by _OriginalTimeGenerated asc
-"@
-    }
-    else {
-        Write-ToLog -Stream 'Verbose' -MessageData 'Setting KQL query to look for logs in a Log Analytics Plan table.'
-        $KQLQuery = @"
-$LAWTableName
-| where TimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
-| order by TimeGenerated asc
-"@
-    }
+    # Load SDK — point to wherever you have Kusto.Data.dll
+    [System.String]$KustoToolsPath = (Resolve-Path -Path '.\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
+    [System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
 
-    [System.Collections.ArrayList]$ResponseArray = @()
+    Write-ToLog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
     try {
         $ErrorActionPreference = 'Stop'
-        # Not specifying a timeout, but know that the max. timeout as of April 2026 is 10 minutes:
-        # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/timeouts
-        # Best to govern this by narrowing the timeslice parameter value to something lower to get quicker results.
-        Write-ToLog -Stream 'Verbose' -MessageData "KQL Query being executed: '$KQLQuery'."
-        $InvokeQuery = Invoke-AzOperationalInsightsQuery -Workspace $GetWorkspace -Query $KQLQuery -ErrorAction SilentlyContinue
-        if ($InvokeQuery) {
-            Write-Verbose -Message 'Found results. Adding to response array.'
-            $InvokeQueryResults = $InvokeQuery.Results
-            $InvokeQueryResults | ForEach-Object -Process {
-                $ResponseArray.Add($_) *> $null
-            }
-        }
-        elseif ($InvokeQuery.Error -notin @('',$null)) {
-            Write-ToLog -Stream 'Error' -MessageData 'Query result returned at least one error.'
-        }
-        else {
-            Write-ToLog -Stream 'Information' -MessageData "No results for dates from: '$FromDateTimeUTCDateTimeStringLowercase' to: '$NextTimeBlockStringLowercase'."
-        }
+        [System.Reflection.Assembly]::LoadFrom($KustoToolsDataDllPath)
     }
     catch {
-        $_
-        Write-ToLog -Stream 'Error' -MessageData $InvokeQuery.Error
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
         throw
     }
 
-    # Write JSON Lines (one row per line). Keep depth high for dynamic columns.
-    [System.Int32]$i = 1
-    [System.Int32]$QueryCount = $ResponseArray.Count
-    if (0 -lt $QueryCount) {
-        [System.String]$FileStamp = '{0:yyyyMMddHHmmss}-{1:yyyyMMddHHmmss}' -f $FromDateTimeUTCDateTime, $NextTimeBlock
-        [System.String]$OutFileName = "$LAWTableName-$FileStamp.jsonl"
-        [System.String]$OutFileFullPath   = Join-Path -Path $OutDirFullPath -ChildPath $OutFileName
+    # Build connection
+    Write-ToLog -Stream 'Information' -MessageData "Building Kusto connection string to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
+    $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
 
-        Write-ToLog -Stream 'Information' -MessageData "Found: '$QueryCount' results. Attempting to create temporary output file: '$OutFileFullPath'."
-        try {
-            $ErrorActionPreference = 'Stop'
-            New-Item -ItemType File -Path $OutDirFullPath -Name $OutFileName -Force *> $null
-            Write-ToLog -Stream 'Verbose' -MessageData "Temporary output file: '$OutFileFullPath' created successfully."
-        }
-        catch {
-            $_
-            Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to create temporary output file: '$OutFileFullPath'."
-            throw
-        }
+    # Add System-Assigned Managed Identity (MSI) authentication to the connection string
+    Write-ToLog -Stream 'Information' -MessageData 'Adding System-Assigned Managed Identity (MSI) authentication to Kusto connection string.'
+    $kcsb = $kcsb.WithAadSystemManagedIdentity()
 
-        Write-ToLog -Stream 'Verbose' -MessageData "Writing out file: '$OutFileFullPath' and appending."
-        [System.Collections.ArrayList]$OutFileArray = @()
-        foreach ($Response in $ResponseArray) {
-            #Write-ToLog -Stream 'Information' -MessageData "Exporting result: '$i' of: '$QueryCount' results."
-            ($Response | ConvertTo-Json -Depth 50 -Compress) | Out-File -FilePath $OutFileFullPath -Append -Encoding utf8 *> $null
-            $i++
-        }
-        Write-ToLog -Stream 'Information' -MessageData "Exported slice $FromDateTimeUTCDateTime -> $NextTimeBlock to $OutFileFullPath"
+    # ← Admin provider, not query provider
+    Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Admin Provider to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
+    $adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
 
-        $OutFileArray.Add($OutFileFullPath) *> $null
+    # Request properties
+    Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Client Request Properties with timeout of: '$ADXTimeoutMinutes' minutes."
+    $crp = New-Object Kusto.Data.Common.ClientRequestProperties
+    $crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
+    $crp.SetOption(
+        [Kusto.Data.Common.ClientRequestProperties]::OptionServerTimeout,
+        [TimeSpan]::FromMinutes($ADXTimeoutMinutes)   # ← bump timeout, appends run long
+    )
 
-        # Upload logs found in this time slice to blob storage
-        Write-ToLog -Stream 'Information' -MessageData 'Trying to upload logs for this time slice.'
-        foreach ($OutFile in $OutFileArray) {
-            Write-ToLog -Stream 'Verbose' -MessageData "Getting item: '$OutFile' in: '$OutDirName'."
-            $GetOutFile = Get-Item -Path $OutFile -ErrorAction SilentlyContinue -Verbose:$false
-            if ($GetOutFile) {
-                Write-ToLog -Stream 'Verbose' -MessageData "Found: '$OutFile' to upload."
-            }
-            else {
-                Write-ToLog -Stream 'Error' -MessageData "Could not find: '$OutFile'. Check function code and try again."
-                throw
-            }
+    <#
+$command = @"
+.set-or-append $ADXTableName <|
+cluster('$LAWClusterURI')
+.database('$LAWDBName')
+.$SearchJobTableName
+| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
+| project
+    TimeGenerated = _OriginalTimeGenerated,
+    Computer, EventTime, Facility, HostIP, HostName,
+    ProcessID, ProcessName, SeverityLevel, SourceSystem,
+    SyslogMessage, Type = _OriginalType,
+    TenantId = toguid(_OriginalTenantId),
+    _ResourceId,
+    _SubscriptionId = guid(null),
+    _TimeReceived = now()
+"@
+#>
 
-            [System.String]$OutFileBlobName = $GetOutFile.Name
-            [System.String]$OutFileFullname = $GetOutFile.FullName
+    $command = @"
+.set-or-append $ADXTableName <|
+cluster('$LAWClusterURI')
+.database('$LAWDBName')
+.$SearchJobTableName
+| where _OriginalTimeGenerated between (datetime($FromDateTimeUTCDateTimeStringLowercase) .. datetime($NextTimeBlockStringLowercase))
+$ProjectClause
+"@
 
-            # Upload logs if blob doesn't already exist. If it does, bail.
-            Write-ToLog -Stream 'Verbose' -MessageData 'Testing if blob already exists.'
-            $GetBlob = Get-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -Blob $OutFileBlobName -ErrorAction SilentlyContinue -Verbose:$false
+    Write-ToLog -Stream 'Information' -MessageData "Querying for logs between: '$FromDateTimeUTCDateTimeStringLowercase' and: '$NextTimeBlockStringLowercase'."
 
-            if ($GetBlob) {
-                Write-ToLog -Stream 'Error' -MessageData "ERROR: Blob: '$OutFileBlobName' already exists. Not uploading! Bailing."
-                throw
-            }
-            else {
-                Write-ToLog -Stream 'Information' -MessageData "Attempting to upload file: '$OutFileFullname' as blob named: '$OutFileBlobName'"
-                try {
-                    $ErrorActionPreference = 'Stop'
-                    [System.String]$PreviousVerbosePreference = $VerbosePreference
-                    [System.String]$PreviousInformationPreference = $InformationPreference
-                    $VerbosePreference = 'SilentlyContinue'
-                    $InformationPreference = 'SilentlyContinue'
-                    Set-AzStorageBlobContent -Context $ctx -Container $StorageAccountContainerName -File $OutFileFullname -Blob $OutFileBlobName -Force -Verbose:$false *> $null
-                    $VerbosePreference = $PreviousVerbosePreference
-                    $InformationPreference = $PreviousInformationPreference
-                    Write-ToLog -Stream 'Information' -MessageData "Successfully uploaded file: '$OutFileFullname' as blob named: '$OutFileBlobName'."
-                }
-                catch {
-                    $_
-                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while uploading: '$OutFileBlobName' to blob storage."
-                    throw
-                }
+    # ← ExecuteControlCommand, not ExecuteQuery
+    $reader   = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $command, $crp)
+    $table    = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
 
-                Write-ToLog -Stream 'Verbose' -MessageData "'$OutFile' uploaded. Trying to remove local copy."
-                try {
-                    $ErrorActionPreference = 'Continue'
-                    Write-ToLog -Stream 'Verbose' -MessageData "Trying to remove: '$OutFileFullname'."
-                    Remove-Item -Path $OutFileFullname -Force *> $null
-                    Write-ToLog -Stream 'Information' -MessageData "Successfully removed: '$OutFileFullname'."
-                }
-                catch {
-                    $_
-                    Write-ToLog -Stream 'Error' -MessageData "An error occurred while trying to remove: '$OutFileFullname'."
-                }
-            }
-        }
+    # Async command returns a single row with the OperationId
+    $opId = $table.Rows[0]['OperationId']
+    Write-Host "Submitted — OperationId: $opId"
+
+    # --- Poll for completion ---
+    $pollCommand = ".show operations $opId"
+    do {
+        Start-Sleep -Seconds 15
+        $pollReader = $adminProvider.ExecuteControlCommand($ADXDatabaseName, $pollCommand, $crp)
+        $pollTable  = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($pollReader).Tables[0]
+        $state      = $pollTable.Rows[0]['State']
+        Write-Host "  ↻ $state"
+    } while ($state -notin @('Completed', 'Failed', 'Abandoned'))
+
+    if ($state -ne 'Completed') {
+        Write-Warning "❌ Failed — check: .show operation details $opId"
+    }
+    else {
+        Write-Host '✅ Done'
     }
 }
 ### END: GET & EXPORT LOGS FROM LAW ###

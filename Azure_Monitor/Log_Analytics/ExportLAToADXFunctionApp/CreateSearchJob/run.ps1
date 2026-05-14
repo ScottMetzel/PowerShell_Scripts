@@ -179,97 +179,6 @@ if ((-not $SliceSeconds) -or ($SliceSeconds -le 0)) {
 }
 Write-ToLog -Stream 'Information' -MessageData "Slice Seconds: '$SliceSeconds'."
 
-# Storage Account Resource ID
-[System.String]$StorageAccountResourceID = $Request.Query.StorageAccountResourceID
-if (-not $StorageAccountResourceID) {
-    [System.String]$StorageAccountResourceID = $Request.Body.StorageAccountResourceID
-}
-
-if ($StorageAccountResourceID -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Resource ID was not provided in the query parameters or the request body. Please provide a valid Storage Account Resource ID and try again.'
-    throw 'Storage Account Resource ID is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Resource ID: '$StorageAccountResourceID'."
-}
-
-# Storage Account Container Name
-[System.String]$StorageAccountContainerName = $Request.Query.StorageAccountContainerName
-if (-not $StorageAccountContainerName) {
-    [System.String]$StorageAccountContainerName = $Request.Body.StorageAccountContainerName
-}
-
-if ($StorageAccountContainerName -in @('', $null)) {
-    Write-ToLog -Stream 'Error' -MessageData 'Storage Account Container Name was not provided in the query parameters or the request body. Please provide a valid Storage Account Container Name and try again.'
-    throw 'Storage Account Container Name is required.'
-}
-else {
-    Write-ToLog -Stream 'Information' -MessageData "Storage Account Container Name: '$StorageAccountContainerName'."
-}
-
-# Parallelism through PowerShell
-[System.Int32]$Parallelism = $Request.Query.Parallelism
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = $Request.Body.Parallelism
-}
-
-if ((-not $Parallelism) -or ($Parallelism -le 0)) {
-    [System.Int32]$Parallelism = 5
-    Write-ToLog -Stream 'Warning' -MessageData "Parallelism was not provided or is less than or equal to 0 in the query parameters or the request body. Defaulting to: '$Parallelism'."
-}
-Write-ToLog -Stream 'Information' -MessageData "Parallelism for this run is set to: '$Parallelism'."
-
-# Log Output local directory name (within the Function App)
-[System.String]$OutDirName = $Request.Query.OutDir
-if (-not $OutDirName) {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-elseif ($OutDirName.Length -lt 1) {
-    [System.String]$OutDirName = 'la-export'
-}
-else {
-    [System.String]$OutDirName = 'la-export'
-}
-
-if ($OutDirName -in @('', $null)) {
-    [System.String]$OutDirName = 'la-export'
-    Write-ToLog -Stream 'Warning' -MessageData "Output directory name was not provided in the query parameters or the request body. Defaulting to: '$OutDirName'."
-}
-else {
-    [System.String]$OutDirName = $Request.Body.OutDir
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Temp. JSONL output directory name within Function App: '$OutDirName'."
-
-# Remove the exported logs from Log Analytics (careful with this)
-[System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Query.RemoveLALogs)
-if (-not $RemoveLALogs) {
-    [System.Boolean]$RemoveLALogs = [System.Convert]::ToBoolean($Request.Body.RemoveLALogs)
-}
-else {
-    [System.Boolean]$RemoveLALogs = $false
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Remove logs from Log Analytics after export: '$RemoveLALogs'."
-
-# The API Version of the Delete API used to remove the exported logs from Log Analytics
-[System.String]$DeleteAPIVersion = $Request.Query.DeleteAPIVersion
-if ((-not $DeleteAPIVersion) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = $Request.Body.DeleteAPIVersion
-
-    if ($DeleteAPIVersion -in @('',$null)) {
-        [System.String]$DeleteAPIVersion = '2023-09-01'
-    }
-}
-elseif (($DeleteAPIVersion.Length -lt 9) -or ($DeleteAPIVersion -in @('',$null))) {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-else {
-    [System.String]$DeleteAPIVersion = '2023-09-01'
-}
-
-Write-ToLog -Stream 'Information' -MessageData "Delete API Version: '$DeleteAPIVersion'."
-
 [System.Collections.ArrayList]$LAWRIDArray = $LAWResourceID.Split('/')
 
 [System.String]$LAWSubscriptionID = $LAWRIDArray[2]
@@ -293,18 +202,6 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: GET LAW & CREATE SEARCH JOB ###
-Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
-
-if ($GetWorkspace) {
-    Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-}
-else {
-    Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
-
 [System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
 [System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
@@ -341,6 +238,16 @@ $LAWTableName
     [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
     Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
 
+    Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
+    $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
+    if ($GetSearchTable.StatusCode -eq 200) {
+        Write-ToLog -Stream 'Error' -MessageData "Search job table with name: '$SearchJobTableName' already exists. Please choose a different name for the search job table and try again."
+        throw "Search job table with name: '$SearchJobTableName' already exists."
+    }
+    else {
+        Write-ToLog -Stream 'Information' -MessageData "No existing search job table with name: '$SearchJobTableName' was found. Proceeding with search job creation."
+    }
+
     $SearchTableAPIBody = [ordered]@{
         'properties' = @{
             'searchResults' = @{
@@ -363,7 +270,7 @@ $LAWTableName
     }
 }
     #>
-    Write-ToLog -Stream 'Information' -MessageData "Creating serach job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
+    Write-ToLog -Stream 'Information' -MessageData "Creating search job for starting date time: '$FromDateTimeUTCDateTime' and ending: '$ToDateTimeUTCDateTime'."
 
     try {
         $ErrorActionPreference = 'Stop'
@@ -377,7 +284,12 @@ $LAWTableName
         throw
     }
     [System.Int32]$NewSearchTableStatusCode = $NewSearchTable.StatusCode
-    if ($NewSearchTableStatusCode -in @('202', '200')) {
+    [System.Collections.ArrayList]$SearchTableStatusCodeArray = @()
+    200..299 | ForEach-Object -Process {
+        $SearchTableStatusCodeArray.Add($_) | Out-Null
+    }
+
+    if ($NewSearchTableStatusCode -in $SearchTableStatusCodeArray) {
         Write-ToLog -Stream 'Information' -MessageData "New search job request processing. Status code: '$NewSearchTableStatusCode'."
     }
     else {
