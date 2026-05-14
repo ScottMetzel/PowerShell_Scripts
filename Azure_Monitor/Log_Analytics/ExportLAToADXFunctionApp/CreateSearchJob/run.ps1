@@ -251,7 +251,6 @@ $LAWTableName
     Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
 
     Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
-    Write-ToLog -Stream 'Information' -MessageData "Searching for search job table: '$SearchJobTableName'."
     $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
     if ($GetSearchTable) {
         Write-ToLog -Stream 'Error' -MessageData "Search job table with name: '$SearchJobTableName' already exists. Please choose a different name for the search job table and try again."

@@ -244,6 +244,11 @@ if ($true -eq $IsSearchJob) {
 
 
 if ($true -eq $IsSearchJob) {
+    [System.String]$TablesAPIVersion = '2025-07-01'
+    [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
+    Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
+    Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
+
     Write-ToLog -Stream 'Information' -MessageData "Checking for existence of search job table named: '$SearchJobTableName'."
     $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
     if ($GetSearchTable) {
