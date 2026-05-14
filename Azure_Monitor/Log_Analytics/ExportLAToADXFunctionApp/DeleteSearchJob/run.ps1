@@ -68,8 +68,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### END: FUNCTIONS ###
 ### START: LOAD MODULES ###
 [System.Collections.ArrayList]$ModulesToImport = @(
-    'Az.Accounts',
-    'Az.Resources'
+    'Az.Accounts'
 )
 
 [System.Int32]$i = 1
@@ -202,17 +201,6 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: GET LAW & SET SEARCH JOB VARIABLES ###
-Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
-
-if ($GetWorkspace) {
-    Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-}
-else {
-    Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
 
 [System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
 [System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
@@ -240,18 +228,13 @@ if ($true -eq $IsSearchJob) {
 
 ### END: GET LAW & SET SEARCH JOB VARIABLES ###
 ### START: SEARCH JOB TABLE DELETION ###
-
-
-
 if ($true -eq $IsSearchJob) {
     [System.String]$TablesAPIVersion = '2025-07-01'
     [System.String]$CreateSearchTableURI = [System.String]::Concat('https://management.azure.com/subscriptions/',$LAWSubscriptionID,'/resourcegroups/',$LAWResourceGroupName,'/providers/Microsoft.OperationalInsights/workspaces/',$LAWorkspaceName,'/tables/',$SearchJobTableName,'?api-version=',$TablesAPIVersion)
     Write-ToLog -Stream 'Information' -MessageData "Create Search Table API URL is: '$CreateSearchTableURI'"
     Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
-
-    Write-ToLog -Stream 'Information' -MessageData "Checking for existence of search job table named: '$SearchJobTableName'."
     $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
-    if ($GetSearchTable) {
+    if ($GetSearchTable.StatusCode -eq 200) {
         Write-ToLog -Stream 'Information' -MessageData "Found search job table named: '$SearchJobTableName'. Attempting to delete it."
         try {
             $ErrorActionPreference = 'Stop'

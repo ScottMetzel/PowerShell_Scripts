@@ -202,18 +202,6 @@ catch {
     throw
 }
 ### END: CONNECT TO AZURE ###
-### START: GET LAW & CREATE SEARCH JOB ###
-Write-ToLog -Stream 'Verbose' -MessageData "Getting Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-$GetWorkspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $LAWResourceGroupName -Name $LAWorkspaceName -ErrorAction SilentlyContinue
-
-if ($GetWorkspace) {
-    Write-ToLog -Stream 'Information' -MessageData "Found Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-}
-else {
-    Write-ToLog -Stream 'Error' -MessageData "Did not find Log Analytics Workspace in resource group: '$LAWResourceGroupName' with name: '$LAWorkspaceName'."
-    throw
-}
-
 [System.DateTime]$FromDateTimeUTCDateTime = [datetime]::SpecifyKind($FromDateTimeUTC, 'Utc')
 [System.DateTime]$ToDateTimeUTCDateTime = [datetime]::SpecifyKind($ToDateTimeUTC, 'Utc')
 if ($FromDateTimeUTCDateTime -lt $ToDateTimeUTCDateTime) {
@@ -252,7 +240,7 @@ $LAWTableName
 
     Write-ToLog -Stream 'Information' -MessageData "Checking for search job table name: '$SearchJobTableName' to ensure it doesn't already exist before creating the search job."
     $GetSearchTable = Invoke-AzRestMethod -Uri $CreateSearchTableURI -Method GET -ErrorAction SilentlyContinue
-    if ($GetSearchTable) {
+    if ($GetSearchTable.StatusCode -eq 200) {
         Write-ToLog -Stream 'Error' -MessageData "Search job table with name: '$SearchJobTableName' already exists. Please choose a different name for the search job table and try again."
         throw "Search job table with name: '$SearchJobTableName' already exists."
     }
