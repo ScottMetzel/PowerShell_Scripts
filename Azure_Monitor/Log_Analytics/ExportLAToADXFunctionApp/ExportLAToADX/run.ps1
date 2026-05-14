@@ -433,7 +433,6 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     ### START: LOAD MODULES ###
     [System.Collections.ArrayList]$ModulesToImport = @(
         'Az.Accounts',
-        'Az.Kusto',
         'Az.Resources'
     )
 
@@ -475,20 +474,33 @@ $DateTimeWindows.GetEnumerator() | ForEach-Object -ThrottleLimit $Parallelism -P
     [System.String]$NextTimeBlockStringLowercase = $NextTimeBlock.ToString('o')
 
     # Load SDK — point to wherever you have Kusto.Data.dll
-    $packagesRoot = Resolve-Path '..\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
-    #$packagesRoot = Resolve-Path 'C:\home\site\wwwroot\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0'
-    [System.Reflection.Assembly]::LoadFrom("$packagesRoot\Kusto.Data.dll")
+    [System.String]$KustoToolsPath = (Resolve-Path -Path '.\bin\microsoft.azure.kusto.tools.14.1.2\tools\net8.0').Path
+    [System.String]$KustoToolsDataDllPath = [System.String]::Concat($KustoToolsPath, '\Kusto.Data.dll')
+
+    Write-ToLog -Stream 'Information' -MessageData "Loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+    try {
+        $ErrorActionPreference = 'Stop'
+        [System.Reflection.Assembly]::LoadFrom($KustoToolsDataDllPath)
+    }
+    catch {
+        Write-ToLog -Stream 'Error' -MessageData "An error occurred while loading Kusto.Data.dll from path: '$KustoToolsDataDllPath'."
+        throw
+    }
 
     # Build connection
+    Write-ToLog -Stream 'Information' -MessageData "Building Kusto connection string to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
     $kcsb = New-Object Kusto.Data.KustoConnectionStringBuilder ($clusterUrl, $ADXDatabaseName)
 
     # Add System-Assigned Managed Identity (MSI) authentication to the connection string
+    Write-ToLog -Stream 'Information' -MessageData 'Adding System-Assigned Managed Identity (MSI) authentication to Kusto connection string.'
     $kcsb = $kcsb.WithAadSystemManagedIdentity()
 
     # ← Admin provider, not query provider
+    Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Admin Provider to cluster: '$clusterUrl' and database: '$ADXDatabaseName'."
     $adminProvider = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsb)
 
     # Request properties
+    Write-ToLog -Stream 'Information' -MessageData "Creating Kusto Client Request Properties with timeout of: '$ADXTimeoutMinutes' minutes."
     $crp = New-Object Kusto.Data.Common.ClientRequestProperties
     $crp.ClientRequestId = 'MigrationScript.Append.' + [Guid]::NewGuid().ToString()
     $crp.SetOption(
