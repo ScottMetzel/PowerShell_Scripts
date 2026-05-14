@@ -69,9 +69,7 @@ Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
 ### START: LOAD MODULES ###
 [System.Collections.ArrayList]$ModulesToImport = @(
     'Az.Accounts',
-    'Az.OperationalInsights',
-    'Az.Resources',
-    'Az.Storage'
+    'Az.Resources'
 )
 
 [System.Int32]$i = 1
