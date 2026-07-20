@@ -201,6 +201,7 @@ catch {
 }
 ### END: RETRIEVE SNMPv3 CREDENTIALS ###
 ### START: RETRIEVE SNMP METRICS ###
+# Note: Thanks to: https://github.com/lahell/SNMPv3
 switch ($WalkOrGet) {
     'Walk' {
         $WalkRequest = @{
