@@ -71,29 +71,81 @@ function Write-ToLog {
     }
 }
 
-function Send-LocalSyslog {
-    param (
-        [string]$Message,
-        [int]$Severity = 6, # 6 = Informational, 3 = Error
-        [int]$Facility = 21 # 21 = Local5
-    )
-    # Calculate Priority and Format Message
-    $Priority = ($Facility * 8) + $Severity
-    $Timestamp = Get-Date -Format 'MMM dd HH:mm:ss'
-    $Hostname = $env:COMPUTERNAME
-    $SyslogPacket = '<{0}>{1} {2} PowerShell: {3}' -f $Priority, $Timestamp, $Hostname, $Message
+function Write-Syslog {
+    [CmdletBinding()]
+    param(
+        [Parameter(
+            Mandatory = $true,
+            ValueFromPipeline = $true
+        )]
+        [object]$InputObject,
+        [ValidateSet(
+            'emerg',
+            'alert',
+            'crit',
+            'err',
+            'warning',
+            'notice',
+            'info',
+            'debug'
+        )]
+        [string]$Severity = 'info',
 
-    # Send via UDP to Localhost
-    $UdpClient = New-Object System.Net.Sockets.UdpClient
-    $UdpClient.Connect('127.0.0.1', 514)
-    $Bytes = [System.Text.Encoding]::ASCII.GetBytes($SyslogPacket)
-    [void]$UdpClient.Send($Bytes, $Bytes.Length)
-    $UdpClient.Close()
+        [ValidateSet(
+            'user',
+            'local0',
+            'local1',
+            'local2',
+            'local3',
+            'local4',
+            'local5',
+            'local6',
+            'local7'
+        )]
+        [string]$Facility = 'local0',
+
+        [string]$Tag = 'PowerShell',
+
+        [switch]$AsJson
+    )
+
+    process {
+
+        # Convert the PowerShell object into a loggable string.
+        if ($AsJson) {
+            $Message = $InputObject | ConvertTo-Json -Compress -Depth 10
+        }
+        elseif ($InputObject -is [string]) {
+            $Message = $InputObject
+        }
+        else {
+            $Message = $InputObject | Out-String
+            $Message = $Message.Trim()
+        }
+
+        # Remove embedded line breaks so one object becomes one
+        # syslog event.
+        $Message = $Message -replace '\r?\n', ' '
+
+        # Linux logger priority format:
+        # facility.severity
+        $Priority = "$Facility.$Severity"
+
+        & /usr/bin/logger `
+            --priority $Priority `
+            --tag $Tag `
+            -- `
+            $Message
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "logger failed with exit code $LASTEXITCODE"
+        }
+    }
 }
 
 # Example usage:
 $Data = Get-Process | Select-Object -First 5 | Out-String
-Send-LocalSyslog -Message $Data
+Write-Syslog -InputObject $Data
 
 
 Write-ToLog -Stream 'Verbose' -MessageData 'Finished loading functions.'
@@ -239,4 +291,4 @@ $GetSNMPv3Metrics | ForEach-Object -Process {
     Send-LocalSyslog -Message $Message -Severity 6 -Facility 21
 }
 ### END: SEND SNMP METRICS TO LOCAL SYSLOG ###
-Write-ToLog -MessageData 'Exiting!'
+Write-ToLog -MessageData 'Exiting!' -Stream Verbose
