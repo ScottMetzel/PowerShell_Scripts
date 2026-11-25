@@ -4,43 +4,46 @@ platforms: Azure
 author: scottmetzel
 date: 01/08/2025
 ---
-Tools in this directory are used with Azure Arc. Please refer to the list below to read more about each one.
 
 # Tools for Azure Arc
-1. [Enable Windows Server Management via Azure Arc](#EnableWinSrvManagement)
-   1. [Download](#EnableWinSrvManagement_Download)
-   2. [Preqreuisites](#EnableWinSrvManagement_Prerequisites)
-   3. [How to Execute](#EnableWinSrvManagement_HowToExecute)
-   4. [Examples](#EnableWinSrvManagement_Examples)
-   5. [Outputs](#EnableWinSrvManagement_Outputs)
-2. [Enable Windows Server Management via Azure Arc - Runbook Edition](#EnableWinSrvManagementRunbook)
-   1. [Download](#EnableWinSrvManagementRunbook_Download)
-   2. [Preqreuisites](#EnableWinSrvManagementRunbook_Prerequisites)
-   3. [How to Execute](#EnableWinSrvManagementRunbook_HowToExecute)
-   4. [Examples](#EnableWinSrvManagementRunbook_Examples)
-   5. [Outputs](#EnableWinSrvManagementRunbook_Outputs)
 
-<a name="EnableWinSrvManagement"></a>
+Tools in this directory are used with Azure Arc. Please refer to the list below to read more about each one.
+
+1. [Enable Windows Server Management via Azure Arc](#enable-windows-server-management-via-azure-arc)
+   1. [Download](#download)
+   2. [Prerequisites](#prerequisites)
+   3. [How to Execute](#how-to-execute)
+   4. [Examples](#examples)
+   5. [Outputs](#outputs)
+2. [Enable Windows Server Management via Azure Arc - Runbook Edition](#enable-windows-server-management-via-azure-arc---runbook-edition)
+   1. [Download](#runbook-download)
+   2. [Prerequisites](#runbook-prerequisites)
+   3. [How to Execute](#runbook-how-to-execute)
+   4. [Examples](#runbook-examples)
+   5. [Outputs](#runbook-outputs)
+
 ## Enable Windows Server Management via Azure Arc
+
 This tool provides a scalable solution for enrolling in [Windows Server Management by Azure Arc](https://learn.microsoft.com/en-us/azure/azure-arc/servers/windows-server-management-overview?tabs=portal). The easiest way to execute it is to download it, then upload to and execute via [Azure Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/overview). Don't have a Cloud Shell? [Read this to get started!](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli)
 
 It can enroll Arc-enabled Servers in Windows Server Management at all scopes, which means it can enroll all discovered Arc-enabled Servers:
- - using no filtering, which can span tenants.
- - those which are associated with specific Entra ID tenants by specifying the tenant IDs.
- - those reside under specific Azure Management Groups, using Management Group IDs.
- - those which are in specific Azure Subscriptions, using Subscription IDs.
- - all Arc-enabled Servers in resource groups, using resource group names.
- - specific Arc-enabled Servers using their names, across resource groups.
- - or specific ones using their names within the same resource group.
+
+- using no filtering, which can span tenants.
+- those which are associated with specific Entra ID tenants by specifying the tenant IDs.
+- those reside under specific Azure Management Groups, using Management Group IDs.
+- those which are in specific Azure Subscriptions, using Subscription IDs.
+- all Arc-enabled Servers in resource groups, using resource group names.
+- specific Arc-enabled Servers using their names, across resource groups.
+- or specific ones using their names within the same resource group.
 
 Despite all this fanciness, it doesn't take much to run.
 
-<a name="EnableWinSrvManagement_Download"></a>
 ### Download
+
 The script is available by its name in this directory: [Enable-WindowsServerManagementByAzureArc.ps1](https://github.com/ScottMetzel/PowerShell_Scripts/blob/main/Azure_Arc/Enable-WindowsServerManagementByAzureArc.ps1)
 
-<a name="EnableWinSrvManagement_Prerequisites"></a>
 ### Prerequisites
+
 - Your Work or School Account must be assigned the [*Azure Connected Machine Resource Administrator*](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/management-and-governance#azure-connected-machine-resource-administrator) role.
 - You must be connected to Azure.
   - Azure Cloud Shell automatically signs you in!
@@ -50,175 +53,215 @@ The script is available by its name in this directory: [Enable-WindowsServerMana
 - The 'Az.Accounts' and 'Az.Resources' PowerShell modules must be installed.
   - Azure Cloud Shell already has these modules installed, and it keeps them up to date!
 
-<a name="EnableWinSrvManagement_HowToExecute"></a>
 ### How to execute
+
 I recommend downloading this script, and then uploading it to a CloudShell session. Once uploaded, the script can be executed using the examples below, which assume you're not connected to Azure (again, CloudShell automatically connects your account to Azure).
 
 This will work in a local PowerShell 7 session as well, but CloudShell offloads maintenance of modules and has connectivity to Azure, too.
 
-<a name="EnableWinSrvManagement_Examples"></a>
 ### Examples
+
 #### Example 1 - Unfiltered
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers at all scopes and can span Entra ID tenants, if your account has the requisite role across tenants. It's the simplest way to enroll your servers.
 
 #### Example 2 - Unfiltered with Reporting
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers at all scopes and can span Entra ID tenants, if your account has the requisite role across tenants. This also creates a report within an existing directory named 'C:\Temp'. The report name contains the name of the script and the date & time it was executed, in CSV format. Reports do not overwrite files with the same name.
 
 #### Example 3 - Unfiltered with Reporting Only
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ReportDirectoryPath 'C:\Temp' -ReportOnly
 ```
+
 Running the tool this way only reports on all servers it discovers at all scopes and can span Entra ID tenants, if your account has the requisite role across tenants. This also creates a report within an existing directory named 'C:\Temp'. The report name contains the name of the script and the date & time it was executed, in CSV format. This is different than adding 'WhatIf', in that a report will be written to disk; when running this with 'WhatIf' no report is generated (hey it's 'WhatIf'.)
 
 #### Example 4 - Filtering by Tenant ID
-```
+
+```PowerShell
 PS> Connect-AzAccount -TenantID '00000000-0000-0000-0000-000000000000'
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -WhatIf
 ```
+
 Running the tool this way would attempt to enroll all servers it discovers at all scopes associated with a specific Entra ID tenant ID. Specifying 'WhatIf' gives insight as to what could be changed, but does not enroll.
 
 #### Example 5 - Filtering with Multiple Tenant IDs
-```
+
+```PowerShell
 PS> [System.String]$TenantID1 = '00000000-0000-0000-0000-000000000000'
 PS> [System.String]$TenantID2 = '11111111-1111-1111-1111-111111111111'
 PS> Connect-AzAccount -TenantID $TenantID1
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -TenantIDs $TenantID1, $TenantID2
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers at all scopes associated with specific Entra ID tenant IDs. There's no 'WhatIf' specified here so it'll attempt to enroll whatever it discovers.
 
 #### Example 6 - Filtering by Management Group ID
-```
+
+```PowerShell
 PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Production'
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside under a specific Management Group, using its ID.
 
 #### Example 7 - Filtering with multiple Management Group IDs
-```
+
+```PowerShell
 PS> Connect-AzAccount -ManagementGroupIDs 'MyOrg_Development','MyOrg_Production'
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside under specific Management Groups, using their IDs.
 
 #### Example 8 - Filtering by Azure Subscription ID
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside in a specific Azure Subscription, using its ID.
 
 #### Example 9 - Filtering by Azure Subscription ID
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -SubscriptionIDs '00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside in specific Azure Subscriptions, using their IDs.
 
 #### Example 10 - Filtering by Resource Group
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside in a specific resource group.
 
 #### Example 11 - Filtering by Resource Group
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers which reside in specific resource groups.
 
 #### Example 12 - Filtering by Resource Groups and Server Names
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1'
 ```
+
 Running the tool this way will attempt to enroll specific servers it discovers which reside in specific resource groups. If an Arc-enabled Server named 'Server1' resides in both resource groups, both servers will attempt to be enrolled. If it only resides in one resource group, but not the other, only one server will be enrolled.
 
 #### Example 13 - Filtering by Resource Groups and Server Names
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
 ```
+
 Running the tool this way will attempt to enroll specific servers it discovers which reside in specific resource groups. Like the previous example, if there are multiple matches for the server names across resource groups, an attempt will be made at enrolling them.
 
 #### Example 14 - Filtering by Resource Groups and Server Names
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01', 'Prod-RG-Arc-02' -MachineNames 'Server1', 'Server2'
 ```
+
 Running the tool this way will attempt to enroll specific servers it discovers which reside in specific resource groups. Like the previous example, if there are multiple matches for the server names across resource groups, an attempt will be made at enrolling them.
 
 #### Example 15 - Filtering by Resource Group and Server Names
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' -MachineNames 'Server1', 'Server2'
 ```
+
 Running the tool this way will attempt to enroll specific servers it discovers which reside in a resource group.
 
 #### Example 16 - Filtering by Server Names
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -MachineNames 'Server1', 'Server2'
 ```
+
 Running the tool this way will attempt to enroll specific servers it discovers which may reside in the same or different resource groups within the same subscription. Enrolling servers using specific resource group or server names always occur in the current subscription context.
 
 #### Example 17 - Excluding a Server
-```
+
+```PowerShell
 PS> Connect-AzAccount
 PS> Get-AzSubscription -SubscriptionName 'Prod 01' | Set-AzContext
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1 -ResourceGroupNames 'Prod-RG-Arc-01' '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/Prod-RG-Arc-01/providers/Microsoft.HybridCompute/machines/Server3'
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers in a specific resource group, but excludes a server using its Resource ID.
 
-<a name="EnableWinSrvManagement_Outputs"></a>
 ### Outputs
+
 #### [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
+
 When eligible servers are discovered, it outputs an array of hashtables.
 
 #### [CSV](https://learn.microsoft.com/en-us/dotnet/api/system.windows.dataformats.commaseparatedvalue?view=windowsdesktop-9.0)
+
 When the 'ReportDirectoryPath' parameter is specified, the tool outputs a report in CSV format. The CSV uses UTF8 formatting.
 
-<a name="EnableWinSrvManagementRunbook"></a>
 ## Enable Windows Server Management via Azure Arc - Runbook Edition
 
-<a name="EnableWinSrvManagementRunbook_Download"></a>
-### Download
+### Runbook Download
+
 The script is available by its name in this directory: [Enable-WSMgmtByAzureArc_Runbook.ps1](https://github.com/ScottMetzel/PowerShell_Scripts/blob/main/Azure_Arc/Enable-WSMgmtByAzureArc_Runbook.ps1)
 
-<a name="EnableWinSrvManagementRunbook_Prerequisites"></a>
-### Prerequisites
-Docs forthcoming!
+### Runbook Prerequisites
 
-<a name="EnableWinSrvManagementRunbook_HowToExecute"></a>
-### How to execute
+More Docs forthcoming!
+
+Requires an Automation Account with a PowerShell 7.4 custom environment that omits the default `Az` module and uses the latest `Az.Accounts`, `Az.ResourceGraph`, and `Az.Resources` modules.
+
+### Runbook: How to execute
+
 Working on it!
 
-<a name="EnableWinSrvManagementRunbook_Examples"></a>
-### Examples
-#### Example 1 - Unfiltered
-```
+### Runbook Examples
+
+#### Runbook Example 1 - Unfiltered
+
+```PowerShell
 PS> .\Enable-WindowsServerManagementByAzureArc.ps1
 ```
+
 Running the tool this way will attempt to enroll all servers it discovers at all scopes and can span Entra ID tenants, if the Managed Identity associated with the Automation Account has the requisite role across tenants. It's the simplest way to keep your servers enrolled.
 
-<a name="EnableWinSrvManagementRunbook_Outputs"></a>
-### Outputs
-#### [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
+### Runbook Outputs
+
+#### Runbook [ArrayList](https://learn.microsoft.com/en-us/dotnet/api/system.collections.arraylist?view=net-9.0)
+
 When eligible servers are discovered, it outputs an array of hashtables.
